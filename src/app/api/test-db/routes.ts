@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import dbPool from '../lib/db';
+import { getPool } from '../../lib/db';
 
 export async function GET() {
   try {
-    const request = dbPool.request();
-    const result = await request.query('SELECT 1 AS test');
+    const pool = await getPool();
+    const result = await pool.request().query('SELECT 1 AS test');
     return NextResponse.json({ success: true, data: result.recordset });
   } catch (error) {
     let message = 'Unknown error';

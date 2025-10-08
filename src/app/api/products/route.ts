@@ -1,7 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getProducts, createNewProduct, updateProduct, deleteProduct } from '../../controllers/product.controller';
+import { NextRequest } from 'next/server';
+import {
+  getProducts,
+  getProduct,
+  createNewProduct,
+  updateProduct,
+  deleteProduct,
+} from '../../controllers/product.controller';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (req.nextUrl.searchParams.get('id')) {
+    return getProduct(req);
+  }
   return getProducts();
 }
 

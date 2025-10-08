@@ -1,3 +1,4 @@
+// db.ts
 import sql from 'mssql';
 import dotenv from 'dotenv';
 
@@ -25,22 +26,23 @@ const config: sql.config = {
   },
 };
 
-const dbPool = new sql.ConnectionPool(config);
+let pool: sql.ConnectionPool | null = null;
 
-export const connectDB = async () => {
+export const getPool = async () => {
   try {
-    const pool = await dbPool.connect();
-    console.log('Connected to SQL Server:', config.database);
-    // Test truy vấn đơn giản để xác nhận kết nối
+    if (pool) {
+      return pool; // đã có pool sẵn
+    }
+    pool = await new sql.ConnectionPool(config).connect();
+    console.log('✅ Connected to SQL Server:', config.database);
+
+    // Test query
     const testResult = await pool.request().query('SELECT 1 AS test');
     console.log('Test query result:', testResult.recordset);
+
     return pool;
   } catch (err) {
     console.error('DB Connection failed:', err);
-    process.exit(1);
+    throw err;
   }
 };
-
-connectDB();
-
-export default dbPool;

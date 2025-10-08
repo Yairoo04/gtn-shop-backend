@@ -1,5 +1,5 @@
 import sql from 'mssql';
-import dbPool from '../lib/db';
+import { getPool } from '../lib/db';
 
 export interface Product {
   id: number;
@@ -13,8 +13,8 @@ export interface Product {
 
 export const getAllProducts = async (): Promise<Product[]> => {
   try {
-    const request = dbPool.request();
-    const result = await request.query('SELECT * FROM Products');
+    const pool = await getPool();
+    const result = await pool.request().query('SELECT * FROM Products');
     console.log('Products fetched:', result.recordset);
     return result.recordset;
   } catch (error) {
@@ -25,8 +25,11 @@ export const getAllProducts = async (): Promise<Product[]> => {
 
 export const getProductById = async (id: number): Promise<Product | null> => {
   try {
-    const request = dbPool.request().input('id', sql.Int, id);
-    const result = await request.query('SELECT * FROM Products WHERE id = @id');
+    const pool = await getPool();
+    const result = await pool
+      .request()
+      .input('id', sql.Int, id)
+      .query('SELECT * FROM Products WHERE id = @id');
     console.log('Product fetched:', result.recordset[0] || null);
     return result.recordset[0] || null;
   } catch (error) {
@@ -37,8 +40,9 @@ export const getProductById = async (id: number): Promise<Product | null> => {
 
 export const createProduct = async (product: Omit<Product, 'id'>): Promise<Product> => {
   try {
-    const request = dbPool.request();
-    const result = await request
+    const pool = await getPool();
+    const result = await pool
+      .request()
       .input('name', sql.NVarChar, product.name)
       .input('description', sql.NVarChar, product.description)
       .input('price', sql.Decimal(10, 2), product.price)
@@ -60,8 +64,9 @@ export const createProduct = async (product: Omit<Product, 'id'>): Promise<Produ
 
 export const updateProduct = async (id: number, product: Partial<Product>): Promise<Product | null> => {
   try {
-    const request = dbPool.request();
-    const result = await request
+    const pool = await getPool();
+    const result = await pool
+      .request()
       .input('id', sql.Int, id)
       .input('name', sql.NVarChar, product.name)
       .input('description', sql.NVarChar, product.description)
@@ -86,8 +91,11 @@ export const updateProduct = async (id: number, product: Partial<Product>): Prom
 
 export const deleteProduct = async (id: number): Promise<boolean> => {
   try {
-    const request = dbPool.request().input('id', sql.Int, id);
-    const result = await request.query('DELETE FROM Products WHERE id = @id');
+    const pool = await getPool();
+    const result = await pool
+      .request()
+      .input('id', sql.Int, id)
+      .query('DELETE FROM Products WHERE id = @id');
     console.log('Product deleted:', result.rowsAffected[0] > 0);
     return result.rowsAffected[0] > 0;
   } catch (error) {

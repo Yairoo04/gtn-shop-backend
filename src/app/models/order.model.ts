@@ -1,5 +1,5 @@
 import sql from 'mssql';
-import dbPool from '../lib/db';
+import { getPool } from '../lib/db';
 
 export interface Order {
   id: number;
@@ -11,13 +11,15 @@ export interface Order {
 }
 
 export const getOrdersByUserId = async (user_id: number): Promise<Order[]> => {
-  const request = dbPool.request().input('user_id', sql.Int, user_id);
+  const pool = await getPool();
+  const request = pool.request().input('user_id', sql.Int, user_id);
   const result = await request.query('SELECT * FROM Orders WHERE user_id = @user_id');
   return result.recordset;
 };
 
 export const createOrder = async (order: Omit<Order, 'id'>): Promise<Order> => {
-  const request = dbPool.request();
+  const pool = await getPool();
+  const request = pool.request();
   const result = await request
     .input('user_id', sql.Int, order.user_id)
     .input('product_id', sql.Int, order.product_id)
