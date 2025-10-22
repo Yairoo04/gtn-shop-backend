@@ -1,3 +1,4 @@
+// product.controller.ts
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getAllProducts,
@@ -5,9 +6,11 @@ import {
   createProduct,
   updateProduct as updateProductModel,
   deleteProduct as deleteProductModel,
+  searchProducts,
+  getProductDetails,
+  addProduct
 } from '../models/product.model';
 
-// GET /api/products
 export const getProducts = async () => {
   try {
     const products = await getAllProducts();
@@ -17,7 +20,6 @@ export const getProducts = async () => {
   }
 };
 
-// GET /api/products?id=1
 export const getProduct = async (req: NextRequest) => {
   const id = parseInt(req.nextUrl.searchParams.get('id') || '0', 10);
   if (!id) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
@@ -31,28 +33,19 @@ export const getProduct = async (req: NextRequest) => {
   }
 };
 
-// POST /api/products
 export const createNewProduct = async (req: NextRequest) => {
   try {
     const body = await req.json();
     if (!body.name || !body.price) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    const newProduct = await createProduct({
-      name: body.name,
-      description: body.description || '',
-      price: body.price,
-      category: body.category || '',
-      stock: body.stock || 0,
-      image_url: body.image_url || '',
-    });
+    const newProduct = await addProduct(body); // Use addProduct which calls dbo.AddProduct
     return NextResponse.json({ success: true, data: newProduct }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'Failed to create product' }, { status: 500 });
   }
 };
 
-// PUT /api/products
 export const updateProduct = async (req: NextRequest) => {
   try {
     const body = await req.json();
@@ -70,7 +63,6 @@ export const updateProduct = async (req: NextRequest) => {
   }
 };
 
-// DELETE /api/products?id=1
 export const deleteProduct = async (req: NextRequest) => {
   try {
     const id = parseInt(req.nextUrl.searchParams.get('id') || '0', 10);
@@ -82,5 +74,28 @@ export const deleteProduct = async (req: NextRequest) => {
     return NextResponse.json({ success: true, message: 'Product deleted' });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'Failed to delete product' }, { status: 500 });
+  }
+};
+
+export const searchProductsController = async (req: NextRequest) => {
+  try {
+    const { keyword, minPrice, maxPrice, categoryId, page = 1, pageSize = 20 } = await req.json();
+    const products = await searchProducts(keyword, minPrice, maxPrice, categoryId, page, pageSize);
+    return NextResponse.json({ success: true, data: products });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'Failed to search products' }, { status: 500 });
+  }
+};
+
+export const getProductDetailsController = async (req: NextRequest) => {
+  const id = parseInt(req.nextUrl.searchParams.get('id') || '0', 10);
+  if (!id) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+
+  try {
+    const product = await getProductDetails(id);
+    if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    return NextResponse.json({ success: true, data: product });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'Failed to fetch product details' }, { status: 500 });
   }
 };
