@@ -1,4 +1,3 @@
-// cart.model.ts
 import sql from 'mssql';
 import { getPool } from '../lib/db';
 
@@ -10,7 +9,7 @@ export const addToCart = async (cartId: string | null, userId: number | null, pr
       .input('UserId', sql.Int, userId)
       .input('ProductId', sql.Int, productId)
       .input('Quantity', sql.Int, quantity)
-      .output('CartId', sql.UniqueIdentifier); // Assuming SP outputs @CartId
+      .output('CartId', sql.UniqueIdentifier);
     await request.execute('dbo.AddToCart');
     const newCartId = request.parameters.CartId.value;
     console.log('Added to cart, CartId:', newCartId);

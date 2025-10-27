@@ -1,4 +1,3 @@
-// admin.controller.ts (New file for admin-specific operations)
 import { NextRequest, NextResponse } from 'next/server';
 import { getCustomers, getRevenueReport } from '../models/admin.model';
 import { verifyToken } from './user.controller';

@@ -1,4 +1,3 @@
-// cart.controller.ts (New file for cart operations)
 import { NextRequest, NextResponse } from 'next/server';
 import { addToCart, viewCart } from '../models/cart.model';
 import { verifyToken } from './user.controller';

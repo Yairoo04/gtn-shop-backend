@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrdersByUserId, createOrder as createOrderModel, cancelOrder, getAllOrders, getOrderDetails, updateOrderStatus, placeOrderFromCart } from '../models/order.model';
-import { verifyToken } from './user.controller'; // Reuse verifyToken from user.controller
+import { verifyToken } from './user.controller';
 
 export const getOrders = async (req: NextRequest) => {
   try {

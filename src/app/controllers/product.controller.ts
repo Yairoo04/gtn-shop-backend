@@ -1,4 +1,3 @@
-// product.controller.ts
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getAllProducts,
@@ -39,7 +38,7 @@ export const createNewProduct = async (req: NextRequest) => {
     if (!body.name || !body.price) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    const newProduct = await addProduct(body); // Use addProduct which calls dbo.AddProduct
+    const newProduct = await addProduct(body);
     return NextResponse.json({ success: true, data: newProduct }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'Failed to create product' }, { status: 500 });

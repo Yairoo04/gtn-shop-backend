@@ -1,4 +1,3 @@
-// order.model.ts
 import sql from 'mssql';
 import { getPool } from '../lib/db';
 
@@ -43,7 +42,7 @@ export const createOrder = async (order: Omit<Order, 'orderId'>): Promise<Order>
     await pool.request()
       .input('OrderId', sql.Int, newOrderId)
       .input('ProductId', sql.Int, order.productId)
-      .input('ProductName', sql.NVarChar, 'Placeholder Name') // Assume fetch name or pass it
+      .input('ProductName', sql.NVarChar, 'Placeholder Name') 
       .input('UnitPrice', sql.Decimal(18, 2), order.totalPrice / order.quantity)
       .input('Quantity', sql.Int, order.quantity)
       .query(`
@@ -58,7 +57,6 @@ export const createOrder = async (order: Omit<Order, 'orderId'>): Promise<Order>
   }
 };
 
-// Additional functions from stored procedures
 export const cancelOrder = async (orderId: number, userId: number): Promise<void> => {
   try {
     const pool = await getPool();

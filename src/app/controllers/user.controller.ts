@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserById, getUserByEmail, createUser, updateUser as updateUserModel } from '../models/user.model';
+import { getUserById, getUserByEmail, createUser, updateUser as updateUserModel, changePasswordModel } from '../models/user.model';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -79,6 +79,27 @@ export const updateUser = async (req: NextRequest) => {
     return NextResponse.json({ success: true, data: updatedUser });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'Failed to update user' }, { status: 500 });
+  }
+};
+
+export const changePassword = async (req: NextRequest) => {
+  try {
+    const token = req.headers.get('Authorization')?.split(' ')[1];
+    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const user = await verifyToken(token);
+    if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+
+    const body = await req.json();
+    const { oldPassword, newPassword } = body;
+    if (!oldPassword || !newPassword) {
+      return NextResponse.json({ error: 'Missing old or new password' }, { status: 400 });
+    }
+
+    await changePasswordModel(user.userId, oldPassword, newPassword);
+    return NextResponse.json({ success: true, message: 'Password changed successfully' });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'Failed to change password' }, { status: 500 });
   }
 };
 

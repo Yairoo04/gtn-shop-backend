@@ -1,4 +1,3 @@
-// product.model.ts
 import sql from 'mssql';
 import { getPool } from '../lib/db';
 
