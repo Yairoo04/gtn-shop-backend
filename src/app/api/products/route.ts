@@ -1,27 +1,39 @@
-import { NextRequest } from 'next/server';
-import {
-  getProducts,
-  getProduct,
-  createNewProduct,
-  updateProduct,
-  deleteProduct,
-} from '../../controllers/product.controller';
+// app/api/products/route.ts
 
-export async function GET(req: NextRequest) {
-  if (req.nextUrl.searchParams.get('id')) {
-    return getProduct(req);
+import { NextResponse } from 'next/server';
+import { getAllProducts, createProduct } from '../../models/product.model';
+
+export async function GET() {
+  try {
+    const products = await getAllProducts();
+    return NextResponse.json({ success: true, data: products });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || 'Failed to fetch products' },
+      { status: 500 }
+    );
   }
-  return getProducts();
 }
 
-export async function POST(req: NextRequest) {
-  return createNewProduct(req);
-}
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    if (!body.name || !body.price) {
+      return NextResponse.json(
+        { success: false, error: 'Name and price are required' },
+        { status: 400 }
+      );
+    }
 
-export async function PUT(req: NextRequest) {
-  return updateProduct(req);
-}
-
-export async function DELETE(req: NextRequest) {
-  return deleteProduct(req);
+    const newProduct = await createProduct(body);
+    return NextResponse.json(
+      { success: true, data: newProduct },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || 'Failed to create product' },
+      { status: 500 }
+    );
+  }
 }

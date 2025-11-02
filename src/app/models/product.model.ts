@@ -1,141 +1,172 @@
+// src/models/product.model.ts
+
 import sql from 'mssql';
 import { getPool } from '../lib/db';
 
+// === INTERFACE ĐÚNG VỚI DB ===
 export interface Product {
-  productId: number;
-  name: string;
-  description: string;
-  price: number;
-  category: string;
-  stock: number;
-  image_url: string;
+  ProductId: number;
+  Name: string;
+  Description: string;
+  CategoryId: number;
+  SKU: string;
+  Price: number;
+  DiscountPrice: number | null;
+  Stock: number;
+  ImageUrl: string;
+  IsPublished: boolean;
+  CreatedAt: Date;
+  UpdatedAt: Date | null;
 }
 
+// === GET ALL ===
 export const getAllProducts = async (): Promise<Product[]> => {
-  try {
-    const pool = await getPool();
-    const result = await pool.request().query('SELECT * FROM dbo.Products');
-    console.log('Products fetched:', result.recordset);
-    return result.recordset;
-  } catch (error) {
-    console.error('Error fetching products:', error);
-    throw error;
-  }
+  const pool = await getPool();
+  const result = await pool.request().query('SELECT * FROM dbo.Products');
+  return result.recordset;
 };
 
+// === GET BY ID ===
 export const getProductById = async (productId: number): Promise<Product | null> => {
-  try {
-    const pool = await getPool();
-    const result = await pool
-      .request()
-      .input('productId', sql.Int, productId)
-      .query('SELECT * FROM dbo.Products WHERE ProductId = @productId');
-    console.log('Product fetched:', result.recordset[0] || null);
-    return result.recordset[0] || null;
-  } catch (error) {
-    console.error('Error fetching product by ID:', error);
-    throw error;
-  }
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('ProductId', sql.Int, productId)
+    .query('SELECT * FROM dbo.Products WHERE ProductId = @ProductId');
+  return result.recordset[0] || null;
 };
 
-export const createProduct = async (product: Omit<Product, 'productId'>): Promise<Product> => {
-  try {
-    const pool = await getPool();
-    const result = await pool
-      .request()
-      .input('name', sql.NVarChar, product.name)
-      .input('description', sql.NVarChar, product.description)
-      .input('price', sql.Decimal(18, 2), product.price)
-      .input('category', sql.NVarChar, product.category)
-      .input('stock', sql.Int, product.stock)
-      .input('image_url', sql.NVarChar, product.image_url)
-      .query(`
-        INSERT INTO dbo.Products (Name, Description, Price, Category, Stock, ImageUrl)
-        OUTPUT INSERTED.*
-        VALUES (@name, @description, @price, @category, @stock, @image_url)
-      `);
-    console.log('Product created:', result.recordset[0]);
-    return result.recordset[0];
-  } catch (error) {
-    console.error('Error creating product:', error);
-    throw error;
-  }
+// === CREATE ===
+export const createProduct = async (
+  product: Omit<Product, 'ProductId' | 'CreatedAt' | 'UpdatedAt'>
+): Promise<Product> => {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('Name', sql.NVarChar, product.Name)
+    .input('Description', sql.NVarChar, product.Description)
+    .input('CategoryId', sql.Int, product.CategoryId)
+    .input('SKU', sql.NVarChar, product.SKU)
+    .input('Price', sql.Decimal(18, 2), product.Price)
+    .input('DiscountPrice', sql.Decimal(18, 2), product.DiscountPrice ?? null)
+    .input('Stock', sql.Int, product.Stock)
+    .input('ImageUrl', sql.NVarChar, product.ImageUrl)
+    .input('IsPublished', sql.Bit, product.IsPublished)
+    .query(`
+      INSERT INTO dbo.Products (
+        Name, Description, CategoryId, SKU, Price, DiscountPrice,
+        Stock, ImageUrl, IsPublished, CreatedAt
+      )
+      OUTPUT INSERTED.*
+      VALUES (
+        @Name, @Description, @CategoryId, @SKU, @Price, @DiscountPrice,
+        @Stock, @ImageUrl, @IsPublished, GETDATE()
+      )
+    `);
+  return result.recordset[0];
 };
 
-export const updateProduct = async (productId: number, product: Partial<Product>): Promise<Product | null> => {
-  try {
-    const pool = await getPool();
-    const result = await pool
-      .request()
-      .input('productId', sql.Int, productId)
-      .input('name', sql.NVarChar, product.name)
-      .input('description', sql.NVarChar, product.description)
-      .input('price', sql.Decimal(18, 2), product.price)
-      .input('category', sql.NVarChar, product.category)
-      .input('stock', sql.Int, product.stock)
-      .input('image_url', sql.NVarChar, product.image_url)
-      .query(`
-        UPDATE dbo.Products
-        SET Name = @name, Description = @description, Price = @price,
-            Category = @category, Stock = @stock, ImageUrl = @image_url
-        OUTPUT INSERTED.*
-        WHERE ProductId = @productId
-      `);
-    console.log('Product updated:', result.recordset[0] || null);
-    return result.recordset[0] || null;
-  } catch (error) {
-    console.error('Error updating product:', error);
-    throw error;
-  }
-};
-
-export const deleteProduct = async (productId: number): Promise<boolean> => {
-  try {
-    const pool = await getPool();
-    const result = await pool
-      .request()
-      .input('productId', sql.Int, productId)
-      .query('DELETE FROM dbo.Products WHERE ProductId = @productId');
-    console.log('Product deleted:', result.rowsAffected[0] > 0);
-    return result.rowsAffected[0] > 0;
-  } catch (error) {
-    console.error('Error deleting product:', error);
-    throw error;
-  }
-};
-
-// Additional functions from stored procedures
-export const searchProducts = async (keyword?: string, minPrice?: number, maxPrice?: number, categoryId?: number, page: number = 1, pageSize: number = 20): Promise<Product[]> => {
-  try {
-    const pool = await getPool();
-    const request = pool.request()
-      .input('Keyword', sql.NVarChar, keyword || null)
-      .input('MinPrice', sql.Decimal(18, 2), minPrice || null)
-      .input('MaxPrice', sql.Decimal(18, 2), maxPrice || null)
-      .input('CategoryId', sql.Int, categoryId || null)
-      .input('Page', sql.Int, page)
-      .input('PageSize', sql.Int, pageSize);
-    const result = await request.execute('dbo.SearchProducts');
-    console.log('Products searched:', result.recordset);
-    return result.recordset;
-  } catch (error) {
-    console.error('Error searching products:', error);
-    throw error;
-  }
-};
-
-export const getProductDetails = async (productId: number): Promise<any | null> => {
+// === UPDATE – HOÀN CHỈNH, KHÔNG LỖI TS ===
+export const updateProduct = async (
+  productId: number,
+  product: Partial<Omit<Product, 'ProductId' | 'CreatedAt'>>
+): Promise<Product | null> => {
   try {
     const pool = await getPool();
     const request = pool.request().input('ProductId', sql.Int, productId);
-    const result = await request.execute('dbo.GetProductDetails');
-    console.log('Product details fetched:', result.recordset[0] || null);
+
+    const updates: string[] = [];
+
+    // Map: DB column → input name → SQL type
+    const fieldMap: Record<
+      string,
+      { input: keyof typeof product; type: any }
+    > = {
+      Name: { input: 'Name', type: sql.NVarChar },
+      Description: { input: 'Description', type: sql.NVarChar },
+      CategoryId: { input: 'CategoryId', type: sql.Int },
+      SKU: { input: 'SKU', type: sql.NVarChar },
+      Price: { input: 'Price', type: sql.Decimal(18, 2) },
+      DiscountPrice: { input: 'DiscountPrice', type: sql.Decimal(18, 2) },
+      Stock: { input: 'Stock', type: sql.Int },
+      ImageUrl: { input: 'ImageUrl', type: sql.NVarChar },
+      IsPublished: { input: 'IsPublished', type: sql.Bit },
+    };
+
+    // Duyệt từng field trong DB
+    for (const [dbField, { input, type }] of Object.entries(fieldMap)) {
+      const value = product[input];
+      if (value !== undefined && value !== null) {
+        updates.push(`${dbField} = @${input}`);
+        request.input(input, type, value);
+      }
+    }
+
+    if (updates.length === 0) return null;
+
+    const query = `
+      DECLARE @Output TABLE (
+        ProductId INT, Name NVARCHAR(255), Description NVARCHAR(MAX), CategoryId INT,
+        SKU NVARCHAR(50), Price DECIMAL(18,2), DiscountPrice DECIMAL(18,2),
+        Stock INT, ImageUrl NVARCHAR(255), IsPublished BIT,
+        CreatedAt DATETIME2, UpdatedAt DATETIME2
+      );
+
+      UPDATE dbo.Products
+      SET ${updates.join(', ')}, UpdatedAt = GETDATE()
+      OUTPUT INSERTED.* INTO @Output
+      WHERE ProductId = @ProductId;
+
+      SELECT * FROM @Output;
+    `;
+
+    const result = await request.query(query);
     return result.recordset[0] || null;
-  } catch (error) {
-    console.error('Error fetching product details:', error);
+  } catch (error: any) {
+    console.error('Update product error:', error);
     throw error;
   }
 };
 
-// Alias for createProduct, but using SP if preferred
-export const addProduct = createProduct;  // Or implement SP if different
+// === DELETE ===
+export const deleteProduct = async (productId: number): Promise<boolean> => {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('ProductId', sql.Int, productId)
+    .query('DELETE FROM dbo.Products WHERE ProductId = @ProductId');
+  return result.rowsAffected[0] > 0;
+};
+
+// === SEARCH & DETAILS (SP) ===
+export const searchProducts = async (
+  keyword?: string,
+  minPrice?: number,
+  maxPrice?: number,
+  categoryId?: number,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<Product[]> => {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('Keyword', sql.NVarChar, keyword || null)
+    .input('MinPrice', sql.Decimal(18, 2), minPrice || null)
+    .input('MaxPrice', sql.Decimal(18, 2), maxPrice || null)
+    .input('CategoryId', sql.Int, categoryId || null)
+    .input('Page', sql.Int, page)
+    .input('PageSize', sql.Int, pageSize)
+    .execute('dbo.SearchProducts');
+  return result.recordset;
+};
+
+export const getProductDetails = async (productId: number): Promise<any | null> => {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('ProductId', sql.Int, productId)
+    .execute('dbo.GetProductDetails');
+  return result.recordset[0] || null;
+};
+
+export const addProduct = createProduct;
