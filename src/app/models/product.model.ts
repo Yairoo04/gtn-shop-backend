@@ -19,15 +19,37 @@ export interface Product {
   UpdatedAt: Date | null;
 }
 
+export type ProductRow = {
+  ProductId: number;
+  Name: string;
+  Description: string | null;
+  CategoryId: number | null;
+  SKU: string | null;
+  Price: number;
+  DiscountPrice: number | null;
+  Stock: number;
+  ImageUrl: string | null;
+  IsPublished: boolean;
+  CreatedAt: string;
+  UpdatedAt: string | null;
+  CategoryName?: string | null;
+};
+
+export type SpecRow = {
+  component: string;   // SpecName AS component
+  detail: string;      // SpecValue AS detail
+  warranty: string | null;
+};
+
 // === GET ALL ===
-export const getAllProducts = async (): Promise<Product[]> => {
+export const getAllProducts = async (): Promise<ProductRow[]> => {
   const pool = await getPool();
   const result = await pool.request().query('SELECT * FROM dbo.Products');
   return result.recordset;
 };
 
 // === GET BY ID ===
-export const getProductById = async (productId: number): Promise<Product | null> => {
+export const getProductById = async (productId: number): Promise<ProductRow | null> => {
   const pool = await getPool();
   const result = await pool
     .request()
@@ -39,7 +61,7 @@ export const getProductById = async (productId: number): Promise<Product | null>
 // === CREATE ===
 export const createProduct = async (
   product: Omit<Product, 'ProductId' | 'CreatedAt' | 'UpdatedAt'>
-): Promise<Product> => {
+): Promise<ProductRow> => {
   const pool = await getPool();
   const result = await pool
     .request()
@@ -66,18 +88,24 @@ export const createProduct = async (
   return result.recordset[0];
 };
 
-// === UPDATE – HOÀN CHỈNH, KHÔNG LỖI TS ===
+// === UPDATE ===
 export const updateProduct = async (
   productId: number,
   product: Partial<Omit<Product, 'ProductId' | 'CreatedAt'>>
-): Promise<Product | null> => {
+): Promise<ProductRow | null> => {
   try {
     const pool = await getPool();
+
+    // Check if product exists first
+    const existingProduct = await getProductById(productId);
+    if (!existingProduct) {
+      return null; // Product not found
+    }
+
     const request = pool.request().input('ProductId', sql.Int, productId);
 
     const updates: string[] = [];
 
-    // Map: DB column → input name → SQL type
     const fieldMap: Record<
       string,
       { input: keyof typeof product; type: any }
@@ -93,22 +121,24 @@ export const updateProduct = async (
       IsPublished: { input: 'IsPublished', type: sql.Bit },
     };
 
-    // Duyệt từng field trong DB
     for (const [dbField, { input, type }] of Object.entries(fieldMap)) {
       const value = product[input];
-      if (value !== undefined && value !== null) {
+      if (value !== undefined) { // Allow null to set fields to null
         updates.push(`${dbField} = @${input}`);
         request.input(input, type, value);
       }
     }
 
-    if (updates.length === 0) return null;
+    if (updates.length === 0) {
+      // No changes, return existing product
+      return existingProduct;
+    }
 
     const query = `
       DECLARE @Output TABLE (
-        ProductId INT, Name NVARCHAR(255), Description NVARCHAR(MAX), CategoryId INT,
-        SKU NVARCHAR(50), Price DECIMAL(18,2), DiscountPrice DECIMAL(18,2),
-        Stock INT, ImageUrl NVARCHAR(255), IsPublished BIT,
+        ProductId INT, Name NVARCHAR(300), Description NVARCHAR(1000), CategoryId INT,
+        SKU NVARCHAR(100), Price DECIMAL(18,2), DiscountPrice DECIMAL(18,2),
+        Stock INT, ImageUrl NVARCHAR(1000), IsPublished BIT,
         CreatedAt DATETIME2, UpdatedAt DATETIME2
       );
 
@@ -121,9 +151,12 @@ export const updateProduct = async (
     `;
 
     const result = await request.query(query);
-    return result.recordset[0] || null;
+    if (result.recordset.length === 0) {
+      return null; // Should not happen if product exists
+    }
+    return result.recordset[0];
   } catch (error: any) {
-    console.error('Update product error:', error);
+    console.error('Update product error:', error.message, error.stack);
     throw error;
   }
 };
@@ -138,7 +171,7 @@ export const deleteProduct = async (productId: number): Promise<boolean> => {
   return result.rowsAffected[0] > 0;
 };
 
-// === SEARCH & DETAILS (SP) ===
+// === SEARCH ===
 export const searchProducts = async (
   keyword?: string,
   minPrice?: number,
@@ -146,7 +179,7 @@ export const searchProducts = async (
   categoryId?: number,
   page: number = 1,
   pageSize: number = 20
-): Promise<Product[]> => {
+): Promise<ProductRow[]> => {
   const pool = await getPool();
   const result = await pool
     .request()
@@ -160,13 +193,117 @@ export const searchProducts = async (
   return result.recordset;
 };
 
-export const getProductDetails = async (productId: number): Promise<any | null> => {
+// === GET PRODUCT DETAILS ===
+export async function getProductDetails(productId: number): Promise<{ product: ProductRow | null; specs: SpecRow[] }> {
+  try {
+    const pool = await getPool();
+
+    // Query 1: Product details
+    const productResult = await pool.request()
+      .input('ProductId', sql.Int, productId)
+      .query(`
+        SELECT p.*, c.Name AS CategoryName
+        FROM dbo.Products p
+        LEFT JOIN dbo.Categories c ON p.CategoryId = c.CategoryId
+        WHERE p.ProductId = @ProductId
+      `);
+    const product = productResult.recordset[0] || null;
+
+    // Query 2: Specs (tối ưu: ORDER BY để sắp xếp nếu cần, ví dụ theo SpecId)
+    const specsResult = await pool.request()
+      .input('ProductId', sql.Int, productId)
+      .query(`
+        SELECT 
+          SpecName AS component, 
+          SpecValue AS detail, 
+          Warranty AS warranty 
+        FROM dbo.ProductSpecs 
+        WHERE ProductId = @ProductId
+        ORDER BY SpecId  -- Tối ưu: Sắp xếp theo thứ tự insert nếu cần
+      `);
+    const specs = specsResult.recordset || [];
+
+    return { product, specs };
+  } catch (error: any) {
+    console.error('[ERROR] getProductDetails failed:', error.message, error.stack);
+    throw new Error(`Failed to fetch product details: ${error.message}`);
+  }
+}
+
+// === GET PRODUCT LIST ===
+export async function getProductList(): Promise<ProductRow[]> {
   const pool = await getPool();
-  const result = await pool
-    .request()
-    .input('ProductId', sql.Int, productId)
-    .execute('dbo.GetProductDetails');
-  return result.recordset[0] || null;
+  const result = await pool.request().query(`
+    SELECT p.ProductId, p.Name, p.Description, p.CategoryId, p.SKU,
+           p.Price, p.DiscountPrice, p.Stock, p.ImageUrl, p.IsPublished,
+           p.CreatedAt, p.UpdatedAt
+    FROM dbo.Products p
+    WHERE p.IsPublished = 1
+    ORDER BY p.CreatedAt DESC
+  `);
+  return result.recordset;
 };
 
 export const addProduct = createProduct;
+
+// === SEED SPECS (Helper cho dev, gọi thủ công nếu cần)
+export async function seedSpecsForProduct(productId: number): Promise<void> {
+  const pool = await getPool();
+  const existing = await pool.request()
+    .input('ProductId', sql.Int, productId)
+    .query('SELECT COUNT(*) AS count FROM dbo.ProductSpecs WHERE ProductId = @ProductId');
+  if (existing.recordset[0].count > 0) {
+    return;  // Tối ưu: Không log, chỉ skip nếu tồn tại
+  }
+  await pool.request().query(`
+    INSERT INTO dbo.ProductSpecs (ProductId, SpecName, SpecValue, Warranty) VALUES
+    (${productId}, 'CPU', 'Intel Core i7-13620H (3.6GHz~4.9GHz) 10 Cores 16 Threads', '36 Tháng'),
+    (${productId}, 'RAM', '16GB (1 x 16GB) DDR5 5200MHz (2x SO-DIMM socket, up to 64GB SDRAM)', '36 Tháng'),
+    (${productId}, 'Ổ cứng', '512GB NVMe PCIe SSD Gen4x4 (1 slot)', '60 Tháng'),
+    (${productId}, 'VGA', 'NVIDIA® GeForce RTX™ 3050 Laptop GPU, 4GB GDDR6', '36 Tháng'),
+    (${productId}, 'Màn hình', '15.6" FHD (1920x1080), 144Hz, IPS-Level, 45% NTSC, 65% sRGB', '24 Tháng'),
+    (${productId}, 'Pin', '3-Cell 53.5 Battery (Whr)', '12 Tháng');
+  `);
+}
+
+// === UPDATE PRODUCT SPECS (Mới: Replace specs cho productId)
+export async function updateProductSpecs(productId: number, specs: SpecRow[]): Promise<void> {
+  const pool = await getPool();
+  const transaction = pool.transaction();
+  try {
+    await transaction.begin();
+
+    // Xóa specs cũ
+    await transaction.request()
+      .input('ProductId', sql.Int, productId)
+      .query('DELETE FROM dbo.ProductSpecs WHERE ProductId = @ProductId');
+
+    // Insert specs mới nếu có
+    if (specs.length > 0) {
+      let insertQuery = 'INSERT INTO dbo.ProductSpecs (ProductId, SpecName, SpecValue, Warranty) VALUES ';
+      const values: string[] = [];
+      const parameters: Record<string, string | null> = {};
+      specs.forEach((spec, index) => {
+        const paramPrefix = `spec${index}`;
+        values.push(`(@ProductId, @${paramPrefix}_component, @${paramPrefix}_detail, @${paramPrefix}_warranty)`);
+        parameters[`${paramPrefix}_component`] = spec.component;
+        parameters[`${paramPrefix}_detail`] = spec.detail;
+        parameters[`${paramPrefix}_warranty`] = spec.warranty;
+      });
+      insertQuery += values.join(', ');
+
+      const request = transaction.request()
+        .input('ProductId', sql.Int, productId);
+      for (const [key, value] of Object.entries(parameters)) {
+        request.input(key, sql.NVarChar, value);
+      }
+      await request.query(insertQuery);
+    }
+
+    await transaction.commit();
+  } catch (error: any) {
+    await transaction.rollback();
+    console.error('Update product specs error:', error.message, error.stack);
+    throw new Error(`Failed to update product specs: ${error.message}`);
+  }
+}
