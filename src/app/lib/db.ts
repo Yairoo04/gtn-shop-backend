@@ -9,7 +9,7 @@ console.log('Environment variables:', {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD ? '[hidden]' : undefined,
   server: process.env.DB_SERVER,
-  database: process.env.DB_NAME,
+  database: process.env.DB_DATABASE,
   port: process.env.DB_PORT,
 });
 
@@ -17,7 +17,7 @@ const config: sql.config = {
   user: process.env.DB_USER!,
   password: process.env.DB_PASSWORD!,
   server: process.env.DB_SERVER!,
-  database: 'GTN_Shop',
+  database: process.env.DB_DATABASE,
   port: Number(process.env.DB_PORT ?? 1433),
   options: {
     encrypt: true,
