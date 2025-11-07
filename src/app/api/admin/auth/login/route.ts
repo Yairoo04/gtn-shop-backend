@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '../../../../lib/db';
 import sql from 'mssql';
+import bcrypt from 'bcrypt';
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,21 +50,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Verify password bằng SHA2_512
-    const verifyResult = await pool.request()
-      .input('Salt', sql.VarBinary, user.PasswordSalt)
-      .input('Password', sql.NVarChar, password)
-      .input('StoredHash', sql.VarBinary, user.PasswordHash)
-      .query(`
-        SELECT 
-          CASE 
-            WHEN HASHBYTES('SHA2_512', @Salt + CONVERT(VARBINARY(MAX), @Password)) = @StoredHash 
-            THEN 1 
-            ELSE 0 
-          END AS IsValid
-      `);
+    // 3. Verify password - hỗ trợ cả SHA2 (old) và bcrypt (new)
+    let isValid = false;
 
-    const isValid = verifyResult.recordset[0].IsValid === 1;
+    // Kiểm tra xem có PasswordSalt không (SHA2 method)
+    if (user.PasswordSalt) {
+      // Old method: SHA2_512 with salt
+      const verifyResult = await pool.request()
+        .input('Salt', sql.VarBinary, user.PasswordSalt)
+        .input('Password', sql.NVarChar, password)
+        .input('StoredHash', sql.VarBinary, user.PasswordHash)
+        .query(`
+          SELECT 
+            CASE 
+              WHEN HASHBYTES('SHA2_512', @Salt + CONVERT(VARBINARY(MAX), @Password)) = @StoredHash 
+              THEN 1 
+              ELSE 0 
+            END AS IsValid
+        `);
+      isValid = verifyResult.recordset[0].IsValid === 1;
+    } else {
+      // New method: bcrypt (for accounts created from admin panel)
+      const passwordHash = user.PasswordHash.toString('utf-8');
+      isValid = await bcrypt.compare(password, passwordHash);
+    }
 
     if (!isValid) {
       return NextResponse.json(

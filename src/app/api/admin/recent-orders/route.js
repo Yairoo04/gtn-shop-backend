@@ -8,9 +8,10 @@ export async function GET() {
     const result = await pool.request().query(`
       SELECT TOP 5
         o.OrderId,
-        o.RecipientName,
+        COALESCE(u.FullName, u.Username) AS RecipientName,
         o.TotalAmount,
         o.Status,
+        o.PaymentMethod,
         o.CreatedAt,
         u.Username,
         u.Email
