@@ -35,6 +35,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Sai email hoặc mật khẩu" }, { status: 401 });
     }
 
+    // Lay them thong tin nguoi dung tu bang users
+    const userQuery = await pool
+      .request()
+      .input("UserId", sql.Int, userId)
+      .query(`
+        SELECT 
+          Username, 
+          FullName, 
+          Email, 
+          Phone, 
+          RoleId, 
+          IsActive 
+        FROM Users 
+        WHERE UserId = @UserId
+      `);
+      const userInfo = userQuery.recordset[0]||{};
+
     // Tạo token JWT
     const token = jwt.sign(
       { id: userId, email, role },
@@ -45,7 +62,14 @@ export async function POST(req: NextRequest) {
     // Login thành công
     return NextResponse.json({
       message: "Đăng nhập thành công",
-      user: { id: userId, email,role },
+      user: { id: userId,
+        username: userInfo.Username || "",
+        fullname: userInfo.FullName || "",
+        email: userInfo.Email || email,
+        phone: userInfo.Phone || "",
+        role: role || userInfo.RoleId,
+        isActive: userInfo.IsActive,
+       },
       token,
     });
   } catch (error: any) {
