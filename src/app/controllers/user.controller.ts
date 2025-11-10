@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserById, getUserByEmail, createUser, updateUser as updateUserModel, changePasswordModel } from '../models/user.model';
+import { getUserById, getUserByEmail, createUser, updateUser as updateUserModel, changePasswordModel, changePasswordModelCustomer } from '../models/user.model';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { getUserByEmailCustomer, updateUserInfoCustomer, getUserByIdCustomer } from "../models/user.model";
 
+// Lấy thông tin người dùng
 export const loginUser = async (req: NextRequest) => {
   try {
     const body = await req.json();
@@ -110,3 +112,100 @@ export const verifyToken = async (token: string) => {
     return null;
   }
 };
+
+// =============== Customer: Lấy thông tin người dùng theo token ===============
+export const getCustomerInfo = async (req: NextRequest) => {
+  try {
+    const token = req.headers.get("Authorization")?.split(" ")[1];
+    if (!token)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const decoded = await verifyToken(token);
+    if (!decoded)
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+
+    const user = await getUserByIdCustomer(decoded.userId);
+    if (!user)
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+    return NextResponse.json({ success: true, data: user });
+  } catch (error) {
+    console.error("Error fetching customer info:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to fetch customer info" },
+      { status: 500 }
+    );
+  }
+};
+
+// =============== Customer: Cập nhật thông tin cá nhân (trừ email & loại KH) ===============
+export const updateCustomerInfo = async (req: NextRequest) => {
+  try {
+    const token = req.headers.get("Authorization")?.split(" ")[1];
+    if (!token)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const decoded = await verifyToken(token);
+    if (!decoded)
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+
+    const body = await req.json();
+    const { fullName, gender, phone } = body;
+
+    if (!fullName || !gender || !phone) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    await updateUserInfoCustomer(decoded.email, { fullName, gender, phone });
+
+    return NextResponse.json({
+      success: true,
+      message: "Customer info updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating customer info:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to update customer info" },
+      { status: 500 }
+    );
+  }
+};
+
+// =============== Customer: Đổi mật khẩu ===============
+export const changeCustomerPassword = async (req: NextRequest) => {
+  try {
+    const token = req.headers.get("Authorization")?.split(" ")[1];
+    if (!token)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const decoded = await verifyToken(token);
+    if (!decoded)
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+
+    const body = await req.json();
+    const { oldPassword, newPassword } = body;
+
+    if (!oldPassword || !newPassword) {
+      return NextResponse.json(
+        { error: "Missing old or new password" },
+        { status: 400 }
+      );
+    }
+
+    await changePasswordModelCustomer(decoded.userId, oldPassword, newPassword);
+    return NextResponse.json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error("Error changing customer password:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to change password" },
+      { status: 500 }
+    );
+  }
+};
+

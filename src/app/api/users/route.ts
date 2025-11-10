@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loginUser, registerUser, getUser, updateUser, changePassword } from '../../controllers/user.controller';
-
+import express from "express";
+import { getUserInfoCustomer, updateUserCustomer} from '../../controllers/user.controller';
 export async function POST(req: NextRequest) {
   const path = req.nextUrl.pathname;
   if (path.endsWith('/login')) {
@@ -20,3 +21,5 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   return updateUser(req);
 }
+
+
