@@ -1,161 +1,154 @@
-import sql from 'mssql';
-import { getPool } from '../lib/db';
-import { addToCart } from './cart.model'; // Import để tạo cart tạm cho buyNow
+// src/app/models/order.model.ts
+import sql from "mssql";
+import { getPool } from "~/app/lib/db";
+import { addToCart } from "./cart.model";
 
-export interface Order {
-  orderId: number;
-  userId: number;
-  productId: number;
-  quantity: number;
-  totalPrice: number;
-  status: string;
-}
+// =======================
+// LẤY ĐƠN CỦA USER
+// =======================
+export const getOrdersByUserId = async (userId: number) => {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input("UserId", sql.Int, userId)
+    .query(`
+      SELECT *
+      FROM Orders
+      WHERE UserId = @UserId
+      ORDER BY CreatedAt DESC
+    `);
 
-export const getOrdersByUserId = async (userId: number): Promise<Order[]> => {
-  try {
-    const pool = await getPool();
-    const request = pool.request().input('userId', sql.Int, userId);
-    const result = await request.query('SELECT * FROM dbo.Orders WHERE UserId = @userId');
-    console.log('Orders fetched:', result.recordset);
-    return result.recordset;
-  } catch (error) {
-    console.error('Error fetching orders by user ID:', error);
-    throw new Error('Database error: Failed to fetch orders');
-  }
+  return result.recordset;
 };
 
-export const createOrder = async (order: Omit<Order, 'orderId'>): Promise<Order> => {
+// =======================
+// ĐẶT HÀNG TỪ CART (SP)
+// =======================
+export const placeOrderFromCart = async (
+  cartId: string,
+  userId: number,
+  recipientName: string,
+  recipientPhone: string,
+  recipientAddress: string
+): Promise<number> => {
   try {
     const pool = await getPool();
     const request = pool.request();
-    const result = await request
-      .input('userId', sql.Int, order.userId)
-      .input('productId', sql.Int, order.productId)
-      .input('quantity', sql.Int, order.quantity)
-      .input('totalPrice', sql.Decimal(18, 2), order.totalPrice)
-      .input('status', sql.NVarChar, order.status || 'Pending')
-      .query(`
-        INSERT INTO dbo.Orders (UserId, TotalAmount, Status)
-        OUTPUT INSERTED.*
-        VALUES (@userId, @totalPrice, @status)
-      `);
-    const newOrderId = result.recordset[0].OrderId;
 
-    // Fetch product name and unit price dynamically
-    const productResult = await pool.request()
-      .input('productId', sql.Int, order.productId)
-      .query('SELECT Name, ISNULL(DiscountPrice, Price) AS UnitPrice FROM dbo.Products WHERE ProductId = @productId');
-    if (productResult.recordset.length === 0) throw new Error('Product not found');
+    request.input("CartId", sql.UniqueIdentifier, cartId);
+    request.input("UserId", sql.Int, userId);
+    request.input("RecipientName", sql.NVarChar(255), recipientName);
+    request.input("RecipientPhone", sql.NVarChar(50), recipientPhone);
+    request.input("RecipientAddress", sql.NVarChar(255), recipientAddress);
 
-    const { Name: productName, UnitPrice } = productResult.recordset[0];
+    // OUTPUT PARAM MUST BE HERE
+    request.output("OutOrderId", sql.Int);
 
-    await pool.request()
-      .input('OrderId', sql.Int, newOrderId)
-      .input('ProductId', sql.Int, order.productId)
-      .input('ProductName', sql.NVarChar, productName)
-      .input('UnitPrice', sql.Decimal(18, 2), UnitPrice)
-      .input('Quantity', sql.Int, order.quantity)
-      .query(`
-        INSERT INTO dbo.OrderItems (OrderId, ProductId, ProductName, UnitPrice, Quantity)
-        VALUES (@OrderId, @ProductId, @ProductName, @UnitPrice, @Quantity)
-      `);
-    console.log('Order created:', result.recordset[0]);
-    return result.recordset[0];
-  } catch (error) {
-    console.error('Error creating order:', error);
-    throw new Error('Database error: Failed to create order');
-  }
-};
+    const result = await request.execute("dbo.PlaceOrderFromCart");
 
-// New: Buy Now - Create order directly from single product
-export const buyNow = async (userId: number | null, productId: number, quantity: number, recipientName: string, recipientPhone: string, recipientAddress: string): Promise<number> => {
-  try {
-    // Create temporary cart
-    let tempCartId = await addToCart(null, userId, productId, quantity);
-
-    // Place order from temp cart
-    const orderId = await placeOrderFromCart(tempCartId, userId, recipientName, recipientPhone, recipientAddress);
-
-    // Optional: Delete temp cart after (implement if needed via SP or query)
-    // await deleteCart(tempCartId);
-
-    console.log('Buy Now order created:', orderId);
+    const orderId = result.output.OutOrderId;
     return orderId;
   } catch (error) {
-    console.error('Error in Buy Now:', error);
-    throw new Error('Database error: Failed to process Buy Now');
+    console.error("PlaceOrderFromCart ERROR:", error);
+    throw new Error("Failed to place order from cart");
   }
 };
 
-export const cancelOrder = async (orderId: number, userId: number): Promise<void> => {
+// =======================
+// BUY NOW = CART TẠM + SP
+// =======================
+export const buyNow = async (
+  userId: number,
+  productId: number,
+  quantity: number,
+  recipientName: string,
+  recipientPhone: string,
+  recipientAddress: string
+): Promise<number> => {
   try {
-    const pool = await getPool();
-    const request = pool.request()
-      .input('OrderId', sql.Int, orderId)
-      .input('UserId', sql.Int, userId);
-    await request.execute('dbo.CancelOrder');
-    console.log('Order cancelled:', orderId);
-  } catch (error) {
-    console.error('Error cancelling order:', error);
-    throw new Error('Database error: Failed to cancel order');
-  }
-};
+    const tempCartId = await addToCart(null, userId, productId, quantity);
 
-export const getAllOrders = async (): Promise<Order[]> => {
-  try {
-    const pool = await getPool();
-    const result = await pool.request().execute('dbo.GetAllOrders');
-    console.log('All orders fetched:', result.recordset);
-    return result.recordset;
-  } catch (error) {
-    console.error('Error fetching all orders:', error);
-    throw new Error('Database error: Failed to fetch all orders');
-  }
-};
+    const orderId = await placeOrderFromCart(
+      tempCartId,
+      userId,
+      recipientName,
+      recipientPhone,
+      recipientAddress
+    );
 
-export const getOrderDetails = async (orderId: number): Promise<any> => {
-  try {
-    const pool = await getPool();
-    const request = pool.request().input('OrderId', sql.Int, orderId);
-    const result = await request.execute('dbo.GetOrderDetails');
-    console.log('Order details fetched:', result.recordset);
-    return result.recordset;
-  } catch (error) {
-    console.error('Error fetching order details:', error);
-    throw new Error('Database error: Failed to fetch order details');
-  }
-};
-
-export const updateOrderStatus = async (orderId: number, status: string): Promise<void> => {
-  try {
-    const pool = await getPool();
-    const request = pool.request()
-      .input('OrderId', sql.Int, orderId)
-      .input('Status', sql.NVarChar, status);
-    await request.execute('dbo.UpdateOrderStatus');
-    console.log('Order status updated:', orderId, status);
-  } catch (error) {
-    console.error('Error updating order status:', error);
-    throw new Error('Database error: Failed to update order status');
-  }
-};
-
-export const placeOrderFromCart = async (cartId: string, userId: number | null, recipientName: string, recipientPhone: string, recipientAddress: string): Promise<number> => {
-  try {
-    const pool = await getPool();
-    const request = pool.request()
-      .input('CartId', sql.UniqueIdentifier, cartId)
-      .input('UserId', sql.Int, userId)
-      .input('RecipientName', sql.NVarChar, recipientName)
-      .input('RecipientPhone', sql.NVarChar, recipientPhone)
-      .input('RecipientAddress', sql.NVarChar, recipientAddress)
-      .output('OutOrderId', sql.Int);
-    await request.execute('dbo.PlaceOrderFromCart');
-    const orderId = request.parameters.OutOrderId.value;
-    console.log('Order placed from cart:', orderId);
     return orderId;
   } catch (error) {
-    console.error('Error placing order from cart:', error);
-    throw new Error('Database error: Failed to place order from cart');
+    console.error("BuyNow ERROR:", error);
+    throw new Error("Failed BuyNow");
   }
+};
+
+// =======================
+// ADMIN – LẤY TẤT CẢ ĐƠN
+// =======================
+export const getAllOrders = async () => {
+  const pool = await getPool();
+  const result = await pool.request().execute("dbo.GetAllOrders");
+  return result.recordset;
+};
+
+// =======================
+// ADMIN – CHI TIẾT ĐƠN
+// =======================
+export const getOrderDetails = async (orderId: number) => {
+  const pool = await getPool();
+
+  const result = await pool
+    .request()
+    .input("OrderId", sql.Int, orderId)
+    .execute("dbo.GetOrderDetails") as sql.IProcedureResult<any>;
+
+  // ép kiểu để tránh lỗi TS
+  const recordsets = result.recordsets as sql.IRecordSet<any>[];
+
+  const orderInfo = recordsets[0]?.[0] || null;
+  const items = recordsets[1] || [];
+
+  if (!orderInfo) return null;
+
+  return {
+    orderId: orderInfo.OrderId,
+    recipientName: orderInfo.RecipientName,
+    recipientPhone: orderInfo.RecipientPhone,
+    recipientAddress: orderInfo.RecipientAddress,
+    total: Number(orderInfo.TotalAmount) || 0,
+    items: items.map((i: any) => ({
+      ProductId: i.ProductId,
+      Name: i.ProductName,
+      Quantity: i.Quantity,
+      Price: Number(i.UnitPrice) || 0,
+    })),
+  };
+};
+
+// =======================
+// ADMIN – UPDATE STATUS
+// =======================
+export const updateOrderStatus = async (
+  orderId: number,
+  status: string
+): Promise<void> => {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("OrderId", sql.Int, orderId)
+    .input("Status", sql.NVarChar, status)
+    .execute("dbo.UpdateOrderStatus");
+};
+
+// =======================
+// HỦY ĐƠN
+// =======================
+export const cancelOrder = async (orderId: number, userId: number) => {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("OrderId", sql.Int, orderId)
+    .input("UserId", sql.Int, userId)
+    .execute("dbo.CancelOrder");
 };

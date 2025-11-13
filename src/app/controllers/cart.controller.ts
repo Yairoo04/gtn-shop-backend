@@ -1,4 +1,3 @@
-// src/app/controllers/cart.controller.ts
 import { NextRequest, NextResponse } from "next/server";
 import * as cartModel from "~/app/models/cart.model";
 
@@ -8,16 +7,17 @@ export async function addToCartController(req: NextRequest) {
     console.log("BODY RECEIVED:", body);
 
     const { cartId, userId, productId, quantity } = body;
-    if (!userId || !productId || !quantity) {
+
+    if (!productId || !quantity) {
       return NextResponse.json(
-        { message: "userId, productId, quantity are required" },
+        { message: "productId, quantity are required" },
         { status: 400 }
       );
     }
 
     const newCartId = await cartModel.addToCart(
       cartId ?? null,
-      Number(userId),
+      userId != null ? Number(userId) : null,
       Number(productId),
       Number(quantity)
     );
@@ -53,6 +53,7 @@ export async function viewCartController(req: NextRequest) {
       { status: 200 }
     );
   } catch (err: any) {
+    console.error("View cart error:", err);
     return NextResponse.json(
       { message: "Internal server error", error: err.message },
       { status: 500 }
