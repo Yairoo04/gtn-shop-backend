@@ -1,5 +1,8 @@
-import { NextRequest } from 'next/server';
-import { addToCartController, viewCartController } from '../../controllers/cart.controller';
+import { NextRequest } from "next/server";
+import {
+  addToCartController,
+  viewCartController,
+} from "~/app/controllers/cart.controller";
 
 export async function POST(req: NextRequest) {
   return addToCartController(req);

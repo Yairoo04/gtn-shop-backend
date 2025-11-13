@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOrdersByUserId, createOrder as createOrderModel, cancelOrder, getAllOrders, getOrderDetails, updateOrderStatus, placeOrderFromCart } from '../models/order.model';
+import { getOrdersByUserId, createOrder as createOrderModel, cancelOrder, getAllOrders, getOrderDetails, updateOrderStatus, placeOrderFromCart, buyNow } from '../models/order.model';
 import { verifyToken } from './user.controller';
 
 export const getOrders = async (req: NextRequest) => {
@@ -26,14 +26,32 @@ export const createOrder = async (req: NextRequest) => {
     if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
 
     const body = await req.json();
-    if (!body.product_id || !body.quantity || !body.total_price) {
+    if (!body.productId || !body.quantity || !body.totalPrice) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const newOrder = await createOrderModel({ ...body, user_id: user.userId });
+    const newOrder = await createOrderModel({ ...body, userId: user.userId });
     return NextResponse.json({ success: true, data: newOrder }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'Failed to create order' }, { status: 500 });
+  }
+};
+
+export const buyNowController = async (req: NextRequest) => {
+  try {
+    const token = req.headers.get('Authorization')?.split(' ')[1];
+    const user = token ? await verifyToken(token) : null;
+
+    const body = await req.json();
+    const { productId, quantity, recipientName, recipientPhone, recipientAddress } = body;
+    if (!productId || !quantity || !recipientName || !recipientPhone || !recipientAddress) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const orderId = await buyNow(user?.userId ?? null, productId, quantity, recipientName, recipientPhone, recipientAddress);
+    return NextResponse.json({ success: true, data: { orderId } }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'Failed to process Buy Now' }, { status: 500 });
   }
 };
 

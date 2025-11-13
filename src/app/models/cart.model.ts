@@ -1,34 +1,51 @@
-import sql from 'mssql';
-import { getPool } from '../lib/db';
+// src/app/models/cart.model.ts
+import sql from "mssql";
+import { getPool } from "~/app/lib/db";
 
-export const addToCart = async (cartId: string | null, userId: number | null, productId: number, quantity: number): Promise<string> => {
+export const addToCart = async (
+  cartId: string | null,
+  userId: number,
+  productId: number,
+  quantity: number
+): Promise<string> => {
   try {
     const pool = await getPool();
-    const request = pool.request()
-      .input('CartId', sql.UniqueIdentifier, cartId)
-      .input('UserId', sql.Int, userId)
-      .input('ProductId', sql.Int, productId)
-      .input('Quantity', sql.Int, quantity)
-      .output('CartId', sql.UniqueIdentifier);
-    await request.execute('dbo.AddToCart');
-    const newCartId = request.parameters.CartId.value;
-    console.log('Added to cart, CartId:', newCartId);
-    return newCartId;
+    const request = pool.request();
+
+    request.input("CartId", sql.UniqueIdentifier, cartId);
+    request.input("UserId", sql.Int, userId);
+    request.input("ProductId", sql.Int, productId);
+    request.input("Quantity", sql.Int, quantity);
+    request.output("CartId", sql.UniqueIdentifier);
+
+    const result = await request.execute("dbo.AddToCart");
+    return result.output.CartId;
   } catch (error) {
-    console.error('Error adding to cart:', error);
-    throw error;
+    console.error("Error adding to cart:", error);
+    throw new Error("Database error: Failed to add to cart");
   }
 };
 
-export const viewCart = async (cartId: string): Promise<any[]> => {
+export const viewCart = async (cartId: string) => {
   try {
     const pool = await getPool();
-    const request = pool.request().input('CartId', sql.UniqueIdentifier, cartId);
-    const result = await request.execute('dbo.ViewCart');
-    console.log('Cart viewed:', result.recordset);
+
+    const query = `
+      SELECT ci.ProductId, ci.Quantity, ci.PriceAtAdded,
+             p.Name, p.ImageUrl
+      FROM dbo.CartItems ci
+      JOIN dbo.Products p ON ci.ProductId = p.ProductId
+      WHERE ci.CartId = @CartId
+    `;
+
+    const result = await pool
+      .request()
+      .input("CartId", sql.UniqueIdentifier, cartId)
+      .query(query);
+
     return result.recordset;
-  } catch (error) {
-    console.error('Error viewing cart:', error);
-    throw error;
+  } catch (err) {
+    console.error("Error viewing cart:", err);
+    throw new Error("Database error: Failed to load cart");
   }
 };

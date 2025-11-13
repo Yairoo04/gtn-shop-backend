@@ -1,5 +1,6 @@
 import sql from 'mssql';
 import { getPool } from '../lib/db';
+import { addToCart } from './cart.model'; // Import để tạo cart tạm cho buyNow
 
 export interface Order {
   orderId: number;
@@ -19,7 +20,7 @@ export const getOrdersByUserId = async (userId: number): Promise<Order[]> => {
     return result.recordset;
   } catch (error) {
     console.error('Error fetching orders by user ID:', error);
-    throw error;
+    throw new Error('Database error: Failed to fetch orders');
   }
 };
 
@@ -39,11 +40,20 @@ export const createOrder = async (order: Omit<Order, 'orderId'>): Promise<Order>
         VALUES (@userId, @totalPrice, @status)
       `);
     const newOrderId = result.recordset[0].OrderId;
+
+    // Fetch product name and unit price dynamically
+    const productResult = await pool.request()
+      .input('productId', sql.Int, order.productId)
+      .query('SELECT Name, ISNULL(DiscountPrice, Price) AS UnitPrice FROM dbo.Products WHERE ProductId = @productId');
+    if (productResult.recordset.length === 0) throw new Error('Product not found');
+
+    const { Name: productName, UnitPrice } = productResult.recordset[0];
+
     await pool.request()
       .input('OrderId', sql.Int, newOrderId)
       .input('ProductId', sql.Int, order.productId)
-      .input('ProductName', sql.NVarChar, 'Placeholder Name') 
-      .input('UnitPrice', sql.Decimal(18, 2), order.totalPrice / order.quantity)
+      .input('ProductName', sql.NVarChar, productName)
+      .input('UnitPrice', sql.Decimal(18, 2), UnitPrice)
       .input('Quantity', sql.Int, order.quantity)
       .query(`
         INSERT INTO dbo.OrderItems (OrderId, ProductId, ProductName, UnitPrice, Quantity)
@@ -53,7 +63,27 @@ export const createOrder = async (order: Omit<Order, 'orderId'>): Promise<Order>
     return result.recordset[0];
   } catch (error) {
     console.error('Error creating order:', error);
-    throw error;
+    throw new Error('Database error: Failed to create order');
+  }
+};
+
+// New: Buy Now - Create order directly from single product
+export const buyNow = async (userId: number | null, productId: number, quantity: number, recipientName: string, recipientPhone: string, recipientAddress: string): Promise<number> => {
+  try {
+    // Create temporary cart
+    let tempCartId = await addToCart(null, userId, productId, quantity);
+
+    // Place order from temp cart
+    const orderId = await placeOrderFromCart(tempCartId, userId, recipientName, recipientPhone, recipientAddress);
+
+    // Optional: Delete temp cart after (implement if needed via SP or query)
+    // await deleteCart(tempCartId);
+
+    console.log('Buy Now order created:', orderId);
+    return orderId;
+  } catch (error) {
+    console.error('Error in Buy Now:', error);
+    throw new Error('Database error: Failed to process Buy Now');
   }
 };
 
@@ -67,7 +97,7 @@ export const cancelOrder = async (orderId: number, userId: number): Promise<void
     console.log('Order cancelled:', orderId);
   } catch (error) {
     console.error('Error cancelling order:', error);
-    throw error;
+    throw new Error('Database error: Failed to cancel order');
   }
 };
 
@@ -79,7 +109,7 @@ export const getAllOrders = async (): Promise<Order[]> => {
     return result.recordset;
   } catch (error) {
     console.error('Error fetching all orders:', error);
-    throw error;
+    throw new Error('Database error: Failed to fetch all orders');
   }
 };
 
@@ -92,7 +122,7 @@ export const getOrderDetails = async (orderId: number): Promise<any> => {
     return result.recordset;
   } catch (error) {
     console.error('Error fetching order details:', error);
-    throw error;
+    throw new Error('Database error: Failed to fetch order details');
   }
 };
 
@@ -106,7 +136,7 @@ export const updateOrderStatus = async (orderId: number, status: string): Promis
     console.log('Order status updated:', orderId, status);
   } catch (error) {
     console.error('Error updating order status:', error);
-    throw error;
+    throw new Error('Database error: Failed to update order status');
   }
 };
 
@@ -126,6 +156,6 @@ export const placeOrderFromCart = async (cartId: string, userId: number | null, 
     return orderId;
   } catch (error) {
     console.error('Error placing order from cart:', error);
-    throw error;
+    throw new Error('Database error: Failed to place order from cart');
   }
 };
