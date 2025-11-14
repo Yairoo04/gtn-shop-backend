@@ -105,10 +105,25 @@ export const changePassword = async (req: NextRequest) => {
   }
 };
 
+// export const verifyToken = async (token: string) => {
+//   try {
+//     return jwt.verify(token, process.env.JWT_SECRET!) as { role: string; userId: number; email: string };
+//   } catch (error) {
+//     return null;
+//   }
+// };
 export const verifyToken = async (token: string) => {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET!) as { role: string; userId: number; email: string };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+
+    // CHUYỂN id → userId
+    return {
+      userId: decoded.id,      // GÁN ĐÚNG
+      email: decoded.email,
+      role: decoded.role,
+    };
   } catch (error) {
+    console.error("verifyToken error:", error);
     return null;
   }
 };
