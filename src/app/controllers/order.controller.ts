@@ -1,4 +1,3 @@
-// src/app/controllers/order.controller.ts
 import { NextRequest, NextResponse } from "next/server";
 import {
   getOrdersByUserId,
@@ -11,160 +10,162 @@ import {
 } from "~/app/models/order.model";
 import { verifyToken } from "./user.controller";
 
-// Helper auth
-const requireLogin = async (req: NextRequest) => {
+export const requireLogin = async (req: NextRequest) => {
   const auth = req.headers.get("Authorization");
   if (!auth?.startsWith("Bearer ")) return null;
-
   const token = auth.substring(7);
   try {
-    return await verifyToken(token);
-  } catch {
+    const user = await verifyToken(token);
+    return user;
+  } catch (err) {
+    console.error("Token verify error:", err);
     return null;
   }
 };
 
 // =======================
-// GET ORDERS USER
+// LẤY DANH SÁCH ĐƠN HÀNG CỦA USER
 // =======================
 export const getOrders = async (req: NextRequest) => {
   const user = await requireLogin(req);
-  if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const orders = await getOrdersByUserId(user.userId);
-  return NextResponse.json({ success: true, data: orders });
-};
+  const { searchParams } = new URL(req.url);
+  const status = searchParams.get("status") ?? undefined;
+  const search = searchParams.get("search") ?? undefined;
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = parseInt(searchParams.get("limit") || "10");
 
-// =======================
-// PLACE ORDER FROM CART
-// =======================
-export const placeOrderFromCartController = async (req: NextRequest) => {
-  const user = await requireLogin(req);
-  if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const result = await getOrdersByUserId({
+      userId: user.userId,
+      status: status === "all" ? undefined : status,
+      search: search || undefined,
+      page,
+      limit,
+    });
 
-  const { cartId, recipientName, recipientPhone, recipientAddress } =
-    await req.json();
-
-  if (!cartId || !recipientName || !recipientPhone || !recipientAddress) {
+    return NextResponse.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error("getOrders error:", error);
     return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 }
-    );
-  }
-
-  const orderId = await placeOrderFromCart(
-    cartId,
-    user.userId,
-    recipientName,
-    recipientPhone,
-    recipientAddress
-  );
-
-  if (!orderId) {
-    return NextResponse.json(
-      { error: "Order failed: OutOrderId null" },
+      { success: false, message: error.message || "Lỗi server" },
       { status: 500 }
     );
   }
-
-  return NextResponse.json({ success: true, data: { orderId } }, { status: 201 });
 };
 
 // =======================
-// BUY NOW
+// ĐẶT HÀNG TỪ GIỎ HÀNG (DÙNG AddressId)
 // =======================
-export const buyNowController = async (req: NextRequest) => {
+export const placeOrderFromCartController = async (req: NextRequest) => {
   const user = await requireLogin(req);
-  if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const {
-    productId,
-    quantity,
-    recipientName,
-    recipientPhone,
-    recipientAddress,
-  } = await req.json();
+  const { cartId, addressId } = await req.json();
 
-  if (!productId || !quantity || !recipientName || !recipientPhone || !recipientAddress) {
+  if (!cartId || !addressId) {
     return NextResponse.json(
-      { error: "Missing required fields" },
+      { error: "Thiếu cartId hoặc addressId" },
       { status: 400 }
     );
   }
 
-  const orderId = await buyNow(
-    user.userId,
-    productId,
-    quantity,
-    recipientName,
-    recipientPhone,
-    recipientAddress
-  );
-
-  return NextResponse.json({ success: true, data: { orderId } }, { status: 201 });
+  try {
+    const orderId = await placeOrderFromCart(cartId, user.userId, addressId);
+    return NextResponse.json(
+      { success: true, data: { orderId } },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error("placeOrderFromCartController error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Không thể đặt hàng" },
+      { status: 500 }
+    );
+  }
 };
 
 // =======================
-// CANCEL ORDER
+// MUA NGAY (DÙNG AddressId)
+// =======================
+export const buyNowController = async (req: NextRequest) => {
+  const user = await requireLogin(req);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { productId, quantity, addressId } = await req.json();
+
+  if (!productId || !quantity || !addressId) {
+    return NextResponse.json(
+      { error: "Thiếu productId, quantity hoặc addressId" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const orderId = await buyNow(user.userId, productId, quantity, addressId);
+    return NextResponse.json(
+      { success: true, data: { orderId } },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error("buyNowController error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Không thể mua ngay" },
+      { status: 500 }
+    );
+  }
+};
+
+// =======================
+// HỦY ĐƠN HÀNG
 // =======================
 export const cancelOrderController = async (req: NextRequest) => {
-  const user = await requireLogin(req);
-  if (!user)
+  // 1. XÁC THỰC USER
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const token = auth.substring(7);
 
-  const { orderId } = await req.json();
-  if (!orderId)
-    return NextResponse.json({ error: "Missing orderId" }, { status: 400 });
+  let user: { userId: number } | null = null; // khai báo kiểu rõ ràng
+  try {
+    user = await verifyToken(token);
+  } catch (err) {
+    console.error("Token verify error:", err);
+    return NextResponse.json({ error: "Token không hợp lệ" }, { status: 401 });
+  }
 
-  await cancelOrder(orderId, user.userId);
-  return NextResponse.json({ success: true, message: "Order cancelled" });
-};
+  // KIỂM TRA user CÓ TỒN TẠI
+  if (!user || !user.userId) {
+    return NextResponse.json({ error: "Không tìm thấy người dùng" }, { status: 401 });
+  }
 
-// =======================
-// ADMIN GET ALL ORDERS
-// =======================
-export const getAllOrdersAdmin = async (req: NextRequest) => {
-  const user = await requireLogin(req);
-  if (!user || user.role !== "admin")
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // 2. ĐỌC BODY
+  let body;
+  try {
+    body = await req.json();
+  } catch (err) {
+    return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
+  }
 
-  const orders = await getAllOrders();
-  return NextResponse.json({ success: true, data: orders });
-};
+  const { orderId } = body;
+  if (!orderId || isNaN(Number(orderId))) {
+    return NextResponse.json({ error: "Thiếu hoặc sai orderId" }, { status: 400 });
+  }
 
-// =======================
-// ADMIN GET ORDER DETAILS
-// =======================
-export const getOrderDetailsAdmin = async (req: NextRequest) => {
-  const user = await requireLogin(req);
-  if (!user || user.role !== "admin")
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  const idStr = req.nextUrl.searchParams.get("orderId");
-  const orderId = Number(idStr);
-
-  if (!orderId)
-    return NextResponse.json({ error: "Invalid orderId" }, { status: 400 });
-
-  const result = await getOrderDetails(orderId);
-  return NextResponse.json({ success: true, data: result });
-};
-
-// =======================
-// ADMIN UPDATE STATUS
-// =======================
-export const updateOrderStatusAdmin = async (req: NextRequest) => {
-  const user = await requireLogin(req);
-  if (!user || user.role !== "admin")
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  const { orderId, status } = await req.json();
-  if (!orderId || !status)
-    return NextResponse.json({ error: "Missing fields" }, { status: 400 });
-
-  await updateOrderStatus(orderId, status);
-  return NextResponse.json({ success: true, message: "Status updated" });
+  // 3. GỌI MODEL – ĐÃ ĐẢM BẢO user.userId KHÔNG NULL
+  try {
+    await cancelOrder(Number(orderId), user.userId);
+    return NextResponse.json(
+      { success: true, message: "Đơn hàng đã hủy thành công" },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("Cancel order error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Không thể hủy đơn" },
+      { status: 400 }
+    );
+  }
 };
