@@ -203,6 +203,46 @@ export const cancelOrder = async (orderId: number, userId: number): Promise<void
 // =======================
 // CUSTOMER – CHI TIẾT ĐƠN (JOIN Addresses + CHUẨN HÓA Status)
 // =======================
+// export const getOrderDetailsCustomer = async (orderId: number) => {
+//   const pool = await getPool();
+
+//   const result = await pool
+//     .request()
+//     .input("OrderId", sql.Int, orderId)
+//     .execute("dbo.GetOrderDetails") as sql.IProcedureResult<any>;
+
+//   const recordsets = result.recordsets as sql.IRecordSet<any>[];
+//   const orderInfo = recordsets[0]?.[0] || null;
+//   const items = recordsets[1] || [];
+
+//   if (!orderInfo) return null;
+
+//   // CHUẨN HÓA StatusName
+//   let statusName = orderInfo.StatusName || 'Pending';
+//   statusName = statusName.trim();
+//   if (statusName) {
+//     statusName = statusName.charAt(0).toUpperCase() + statusName.slice(1).toLowerCase();
+//   }
+
+//   return {
+//     orderInfo: {
+//       OrderId: orderInfo.OrderId,
+//       UserId: orderInfo.UserId,
+//       CreatedAt: orderInfo.CreatedAt,
+//       StatusName: statusName,
+//       RecipientName: orderInfo.RecipientName,       // từ JOIN Addresses
+//       RecipientPhone: orderInfo.RecipientPhone,     // từ JOIN Addresses
+//       RecipientAddress: orderInfo.RecipientAddress, // từ JOIN Addresses
+//       TotalAmount: Number(orderInfo.TotalAmount) || 0,
+//     },
+//     items: items.map((i: any) => ({
+//       ProductId: i.ProductId,
+//       Name: i.ProductName,
+//       Quantity: i.Quantity,
+//       Price: Number(i.UnitPrice) || 0,
+//     })),
+//   };
+// };
 export const getOrderDetailsCustomer = async (orderId: number) => {
   const pool = await getPool();
 
@@ -217,29 +257,22 @@ export const getOrderDetailsCustomer = async (orderId: number) => {
 
   if (!orderInfo) return null;
 
-  // CHUẨN HÓA StatusName
-  let statusName = orderInfo.StatusName || 'Pending';
-  statusName = statusName.trim();
-  if (statusName) {
-    statusName = statusName.charAt(0).toUpperCase() + statusName.slice(1).toLowerCase();
-  }
-
   return {
     orderInfo: {
       OrderId: orderInfo.OrderId,
       UserId: orderInfo.UserId,
       CreatedAt: orderInfo.CreatedAt,
-      StatusName: statusName,
-      RecipientName: orderInfo.RecipientName,       // từ JOIN Addresses
-      RecipientPhone: orderInfo.RecipientPhone,     // từ JOIN Addresses
-      RecipientAddress: orderInfo.RecipientAddress, // từ JOIN Addresses
+      StatusName: orderInfo.StatusName || 'Pending',
+      RecipientName: orderInfo.RecipientName,
+      RecipientPhone: orderInfo.RecipientPhone,
+      RecipientAddress: orderInfo.RecipientAddress,
       TotalAmount: Number(orderInfo.TotalAmount) || 0,
     },
     items: items.map((i: any) => ({
       ProductId: i.ProductId,
       Name: i.ProductName,
       Quantity: i.Quantity,
-      Price: Number(i.UnitPrice) || 0,
+      Price: Number(i.Price) || 0,  // SỬA: i.Price, KHÔNG PHẢI i.UnitPrice
     })),
   };
 };
