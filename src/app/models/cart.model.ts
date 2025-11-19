@@ -11,7 +11,6 @@ export const addToCart = async (
     const pool = await getPool();
     const request = pool.request();
 
-    // @CartId là INOUT param → dùng output với initial value
     request.output("CartId", sql.UniqueIdentifier, cartId ?? null);
     request.input("UserId", sql.Int, userId ?? null);
     request.input("ProductId", sql.Int, productId);
@@ -20,41 +19,83 @@ export const addToCart = async (
     const result = await request.execute("dbo.AddToCart");
 
     const outCartId = result.output.CartId as string;
+    if (!outCartId) throw new Error("CartId không được trả về");
     return outCartId;
-  } catch (error) {
-    console.error("Error adding to cart:", error);
-    throw new Error("Database error: Failed to add to cart");
+  } catch (error: any) {
+    console.error("Error in addToCart:", error);
+    throw new Error("Không thể thêm vào giỏ hàng: " + error.message);
   }
 };
 
-export type CartItem = {
+export interface CartItem {
   ProductId: number;
-  Quantity: number;
-  PriceAtAdded: number;
-  Name: string;
+  ProductName: string;
   ImageUrl: string;
-};
+  PriceAtAdded: number;
+  Quantity: number;
+  LineTotal: number;
+  Stock?: number; 
+}
 
 export const viewCart = async (cartId: string): Promise<CartItem[]> => {
   try {
     const pool = await getPool();
-
-    const query = `
-      SELECT ci.ProductId, ci.Quantity, ci.PriceAtAdded,
-             p.Name, p.ImageUrl
-      FROM dbo.CartItems ci
-      JOIN dbo.Products p ON ci.ProductId = p.ProductId
-      WHERE ci.CartId = @CartId
-    `;
-
     const result = await pool
       .request()
       .input("CartId", sql.UniqueIdentifier, cartId)
-      .query<CartItem>(query);
+      .execute("dbo.ViewCart");
 
-    return result.recordset;
-  } catch (err) {
-    console.error("Error viewing cart:", err);
-    throw new Error("Database error: Failed to load cart");
+    console.log("[DEBUG] ViewCart raw result:", result.recordset);
+
+    return result.recordset.map((item: any) => {
+      // Đảm bảo ImageUrl là chuỗi đơn
+      let imageUrl = '/images/placeholder.png';
+      if (typeof item.ImageUrl === 'string') {
+        try {
+          const parsed = JSON.parse(item.ImageUrl);
+          imageUrl = Array.isArray(parsed) && parsed[0] ? parsed[0] : '/images/placeholder.png';
+        } catch {
+          imageUrl = item.ImageUrl || '/images/placeholder.png';
+        }
+      }
+
+      return {
+        ProductId: item.ProductId,
+        ProductName: item.ProductName,
+        ImageUrl: imageUrl,
+        PriceAtAdded: item.PriceAtAdded,
+        Quantity: item.Quantity,
+        LineTotal: item.LineTotal,
+        Stock: item.Stock || 0,
+      };
+    });
+  } catch (error: any) {
+    console.error("Error in viewCart:", error);
+    throw new Error("Không thể tải giỏ hàng: " + error.message);
   }
+};
+
+export const removeFromCart = async (cartId: string, productId: number): Promise<void> => {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("CartId", sql.UniqueIdentifier, cartId)
+    .input("ProductId", sql.Int, productId)
+    .execute("dbo.RemoveFromCart");
+};
+
+export const updateCartItem = async (
+  cartId: string,
+  productId: number,
+  quantity: number
+): Promise<{ LineTotal: number }> => {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input("CartId", sql.UniqueIdentifier, cartId)
+    .input("ProductId", sql.Int, productId)
+    .input("Quantity", sql.Int, quantity)
+    .execute("dbo.UpdateCartItem");
+
+  return { LineTotal: result.recordset[0]?.LineTotal || 0 };
 };
