@@ -23,7 +23,12 @@ export interface RecentViewProduct {
 // === GET ALL ===
 export const getAllRecentViewProducts = async (): Promise<RecentViewProduct[]> => {
   const pool = await getPool();
-  const result = await pool.request().query('SELECT * FROM dbo.RecentViewProducts');
+  const result = await pool.request().query(`
+    SELECT rv.* 
+    FROM dbo.RecentViewProducts rv
+    INNER JOIN dbo.Products p ON rv.ProductId = p.ProductId
+    WHERE p.IsPublished = 1
+  `);
   return result.recordset;
 };
 
@@ -175,9 +180,11 @@ export const getRecentViewProducts = async (userId: number, limit: number = 10):
     .input('UserId', sql.Int, userId)
     .input('Limit', sql.Int, limit)
     .query(`
-      SELECT TOP (@Limit) * FROM dbo.RecentViewProducts
-      WHERE UserId = @UserId
-      ORDER BY ViewedAt DESC
+      SELECT TOP (@Limit) rv.* 
+      FROM dbo.RecentViewProducts rv
+      INNER JOIN dbo.Products p ON rv.ProductId = p.ProductId
+      WHERE rv.UserId = @UserId AND p.IsPublished = 1
+      ORDER BY rv.ViewedAt DESC
     `);
   return result.recordset;
 };

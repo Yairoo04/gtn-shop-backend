@@ -44,7 +44,7 @@ export type SpecRow = {
 // === GET ALL ===
 export const getAllProducts = async (): Promise<ProductRow[]> => {
   const pool = await getPool();
-  const result = await pool.request().query('SELECT * FROM dbo.Products');
+  const result = await pool.request().query('SELECT * FROM dbo.Products WHERE IsPublished = 1');
   return result.recordset;
 };
 
@@ -54,7 +54,7 @@ export const getProductById = async (productId: number): Promise<ProductRow | nu
   const result = await pool
     .request()
     .input('ProductId', sql.Int, productId)
-    .query('SELECT * FROM dbo.Products WHERE ProductId = @ProductId');
+    .query('SELECT * FROM dbo.Products WHERE ProductId = @ProductId AND IsPublished = 1');
   return result.recordset[0] || null;
 };
 
@@ -205,7 +205,7 @@ export async function getProductDetails(productId: number): Promise<{ product: P
         SELECT p.*, c.Name AS CategoryName
         FROM dbo.Products p
         LEFT JOIN dbo.Categories c ON p.CategoryId = c.CategoryId
-        WHERE p.ProductId = @ProductId
+        WHERE p.ProductId = @ProductId AND p.IsPublished = 1
       `);
     const product = productResult.recordset[0] || null;
 
@@ -214,9 +214,9 @@ export async function getProductDetails(productId: number): Promise<{ product: P
       .input('ProductId', sql.Int, productId)
       .query(`
         SELECT 
-          SpecName AS component, 
-          SpecValue AS detail, 
-          Warranty AS warranty 
+          SpecName, 
+          SpecValue, 
+          Warranty 
         FROM dbo.ProductSpecs 
         WHERE ProductId = @ProductId
         ORDER BY SpecId  -- Tối ưu: Sắp xếp theo thứ tự insert nếu cần

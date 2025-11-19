@@ -183,17 +183,38 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Hard delete
+    // Xóa theo thứ tự: RecentViewProducts → ProductSpecs → OrderDetails → Products
+    console.log(`🗑️ Deleting related data for ProductId ${productId}...`);
+    
+    // 1. Xóa RecentViewProducts
+    const deleteRecentViewResult = await pool.request()
+      .input('ProductId', sql.Int, parseInt(productId, 10))
+      .query('DELETE FROM dbo.RecentViewProducts WHERE ProductId = @ProductId');
+    console.log(`✅ Deleted ${deleteRecentViewResult.rowsAffected[0]} recent view records`);
+
+    // 2. Xóa ProductSpecs
+    const deleteSpecsResult = await pool.request()
+      .input('ProductId', sql.Int, parseInt(productId, 10))
+      .query('DELETE FROM dbo.ProductSpecs WHERE ProductId = @ProductId');
+    console.log(`✅ Deleted ${deleteSpecsResult.rowsAffected[0]} specs`);
+
+    // 3. Xóa OrderItems (nếu có)
+    const deleteOrderItemsResult = await pool.request()
+      .input('ProductId', sql.Int, parseInt(productId, 10))
+      .query('DELETE FROM dbo.OrderItems WHERE ProductId = @ProductId');
+    console.log(`✅ Deleted ${deleteOrderItemsResult.rowsAffected[0]} order items`);
+
+    // 4. Cuối cùng xóa Product
+    console.log(`🗑️ Deleting Product ${productId}...`);
     await pool.request()
       .input('ProductId', sql.Int, parseInt(productId, 10))
-      .query(`
-        DELETE FROM dbo.Products 
-        WHERE ProductId = @ProductId
-      `);
+      .query('DELETE FROM dbo.Products WHERE ProductId = @ProductId');
+
+    console.log(`✅ Product ${productId} deleted successfully`);
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Product deleted successfully' 
+      message: 'Đã xóa sản phẩm và dữ liệu liên quan thành công' 
     });
   } catch (error: any) {
     console.error('❌ DELETE /api/admin/products error:', error);
