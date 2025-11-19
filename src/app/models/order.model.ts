@@ -86,56 +86,17 @@ export const getAllOrders = async (): Promise<Order[]> => {
 export const getOrderDetails = async (orderId: number): Promise<any> => {
   try {
     const pool = await getPool();
-    // Query thông tin đơn hàng
-    const orderResult = await pool.request()
-      .input('OrderId', sql.Int, orderId)
-      .query(`
-        SELECT 
-          o.OrderId,
-          o.UserId,
-          COALESCE(u.FullName, u.Username) AS RecipientName,
-          u.Phone AS RecipientPhone,
-          o.TotalAmount,
-          o.Status,
-          o.PaymentMethod,
-          o.CreatedAt,
-          o.StatusId,
-          u.UserId AS CustomerId,
-          COALESCE(u.FullName, u.Username) AS CustomerName,
-          u.Email AS CustomerEmail,
-          a.Street AS AddressStreet,
-          a.City AS AddressCity,
-          a.Province AS AddressProvince
-        FROM dbo.Orders o
-        LEFT JOIN dbo.Users u ON o.UserId = u.UserId
-        LEFT JOIN dbo.Addresses a ON o.AddressId = a.AddressId
-        WHERE o.OrderId = @OrderId
-      `);
-
-    if (orderResult.recordset.length === 0) {
+    const request = pool.request().input('OrderId', sql.Int, orderId);
+    const result = await request.execute('dbo.GetOrderDetails');
+    // Ép kiểu về mssql.IRecordSet<any>[] để truy cập đúng các result set
+    const recordsets = result.recordsets as sql.IRecordSet<any>[];
+    if (!recordsets || recordsets.length < 2) {
       return null;
     }
-
-    // Query danh sách sản phẩm trong đơn (OrderItems)
-    const itemsResult = await pool.request()
-      .input('OrderId', sql.Int, orderId)
-      .query(`
-        SELECT 
-          oi.OrderItemId,
-          oi.ProductId,
-          oi.ProductName,
-          oi.UnitPrice,
-          oi.Quantity,
-          p.SKU,
-          p.ImageUrl
-        FROM dbo.OrderItems oi
-        LEFT JOIN dbo.Products p ON oi.ProductId = p.ProductId
-        WHERE oi.OrderId = @OrderId
-      `);
-
-    const order = orderResult.recordset[0];
-    order.Items = itemsResult.recordset;
-
+    const orderInfo = recordsets[0][0];
+    const items = recordsets[1];
+    const order = { ...orderInfo, items };
+    console.log('Order details fetched:', order);
     return order;
   } catch (error) {
     console.error('Error fetching order details:', error);
@@ -163,7 +124,9 @@ export const placeOrderFromCart = async (cartId: string, userId: number | null, 
     const request = pool.request()
       .input('CartId', sql.UniqueIdentifier, cartId)
       .input('UserId', sql.Int, userId)
-      .input('PaymentMethod', sql.NVarChar(100), 'COD') // Truyền PaymentMethod, có thể sửa thành tham số
+      .input('RecipientName', sql.NVarChar, recipientName)
+      .input('RecipientPhone', sql.NVarChar, recipientPhone)
+      .input('RecipientAddress', sql.NVarChar, recipientAddress)
       .output('OutOrderId', sql.Int);
     await request.execute('dbo.PlaceOrderFromCart');
     const orderId = request.parameters.OutOrderId.value;

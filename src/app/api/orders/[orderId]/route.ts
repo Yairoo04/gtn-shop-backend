@@ -20,15 +20,26 @@ export async function GET(
   }
 
   try {
-    const order = await getOrderDetails(orderId);
-    if (!order) {
-      return NextResponse.json({ success: false, message: "Không tìm thấy đơn hàng" }, { status: 404 });
-    }
-    // Nếu có kiểm tra quyền, kiểm tra ở đây (giả sử kết quả trả về có UserId)
-    if (order.UserId !== user.userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    return NextResponse.json({ success: true, data: order });
+      const result = await getOrderDetails(orderId);
+      // Kiểm tra kết quả trả về
+      if (!result || typeof result !== 'object') {
+        return NextResponse.json({ error: "Order not found" }, { status: 404 });
+      }
+      // Nếu kết quả là mảng (cũ), chuyển sang object
+      let orderInfo;
+      if (Array.isArray(result)) {
+        if (result.length === 0 || !result[0]) {
+          return NextResponse.json({ error: "Order not found" }, { status: 404 });
+        }
+        orderInfo = result[0];
+      } else {
+        orderInfo = result;
+      }
+      // Kiểm tra quyền truy cập
+      if (!orderInfo.UserId || orderInfo.UserId !== user.userId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      return NextResponse.json({ success: true, data: orderInfo });
   } catch (error: any) {
     console.error("getOrderDetail error:", error);
     return NextResponse.json(
