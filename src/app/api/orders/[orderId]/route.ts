@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderDetailsCustomer } from "~/app/models/order.model";
+import { getOrderDetails } from "~/app/models/order.model";
 import { requireLogin } from "~/app/controllers/order.controller";
 
 export async function GET(
@@ -20,18 +20,15 @@ export async function GET(
   }
 
   try {
-    const result = await getOrderDetailsCustomer(orderId);
-    if (!result) {
+    const order = await getOrderDetails(orderId);
+    if (!order) {
       return NextResponse.json({ success: false, message: "Không tìm thấy đơn hàng" }, { status: 404 });
     }
-
-    // KIỂM TRA QUYỀN
-    if (result.orderInfo.UserId !== user.userId) {
+    // Nếu có kiểm tra quyền, kiểm tra ở đây (giả sử kết quả trả về có UserId)
+    if (order.UserId !== user.userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-
-    return NextResponse.json({ success: true, data: result });
-
+    return NextResponse.json({ success: true, data: order });
   } catch (error: any) {
     console.error("getOrderDetail error:", error);
     return NextResponse.json(

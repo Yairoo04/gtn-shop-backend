@@ -138,19 +138,9 @@ export const getRecentViewProducts = async (userId: number, limit: number = 10):
   const result = await pool
     .request()
     .input('UserId', sql.Int, userId)
-<<<<<<< HEAD
-    .input('Limit', sql.Int, limit)
-    .query(`
-      SELECT TOP (@Limit) rv.* 
-      FROM dbo.RecentViewProducts rv
-      INNER JOIN dbo.Products p ON rv.ProductId = p.ProductId
-      WHERE rv.UserId = @UserId AND p.IsPublished = 1
-      ORDER BY rv.ViewedAt DESC
-    `);
-=======
+
     .input('Limit', sql.Int, Math.min(limit, 50))
     .execute('GetRecentViewedProducts'); // ĐÚNG SP: TRẢ VỀ DisplayPrice
 
->>>>>>> 9bea2a4a547455a564a56ea28cc759a3544f14c2
   return result.recordset;
 };

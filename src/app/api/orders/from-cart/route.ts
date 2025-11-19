@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { cartId, addressId, selectedProductIds = [] } = await req.json();
+    const { cartId, addressId, selectedProductIds = [], paymentMethod } = await req.json();
 
     // 2. Validate đầu vào
     if (!cartId || !addressId) {
@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
       .input("CartId", sql.UniqueIdentifier, cartId)
       .input("UserId", sql.Int, user.userId)
       .input("AddressId", sql.Int, addressId)
+      .input("PaymentMethod", sql.NVarChar(100), paymentMethod || 'COD') // Truyền phương thức thanh toán
       .input("SelectedProductIds", tvp)           // TVP truyền vào đây
       .output("NewOrderId", sql.Int)              // Tên output đúng như procedure
       .execute(PROC_NAME);

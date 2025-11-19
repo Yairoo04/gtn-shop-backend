@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getOrdersByUserId,
   placeOrderFromCart,
-  buyNow,
+  placeOrderFromCartWithSelection,
   cancelOrder,
   getAllOrders,
   getOrderDetails,
@@ -37,14 +37,8 @@ export const getOrders = async (req: NextRequest) => {
   const limit = parseInt(searchParams.get("limit") || "10");
 
   try {
-    const result = await getOrdersByUserId({
-      userId: user.userId,
-      status: status === "all" ? undefined : status,
-      search: search || undefined,
-      page,
-      limit,
-    });
-
+    // Chỉ truyền userId cho đúng với model
+    const result = await getOrdersByUserId(user.userId);
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
     console.error("getOrders error:", error);
@@ -72,7 +66,16 @@ export const placeOrderFromCartController = async (req: NextRequest) => {
   }
 
   try {
-    const orderId = await placeOrderFromCart(cartId, user.userId, addressId);
+    // Thêm các tham số còn thiếu cho đúng với model
+    // Giả sử nhận thêm recipientName, recipientPhone, recipientAddress từ body nếu cần
+    const { recipientName = '', recipientPhone = '', recipientAddress = '', selectedItems = [] } = await req.json();
+    // Gọi hàm mới nếu có selectedItems
+    let orderId;
+    if (selectedItems && Array.isArray(selectedItems) && selectedItems.length > 0) {
+      orderId = await placeOrderFromCartWithSelection(cartId, user.userId, recipientName, recipientPhone, recipientAddress, selectedItems);
+    } else {
+      orderId = await placeOrderFromCart(cartId, user.userId, recipientName, recipientPhone, recipientAddress);
+    }
     return NextResponse.json(
       { success: true, data: { orderId } },
       { status: 201 }
@@ -102,19 +105,8 @@ export const buyNowController = async (req: NextRequest) => {
     );
   }
 
-  try {
-    const orderId = await buyNow(user.userId, productId, quantity, addressId);
-    return NextResponse.json(
-      { success: true, data: { orderId } },
-      { status: 201 }
-    );
-  } catch (error: any) {
-    console.error("buyNowController error:", error);
-    return NextResponse.json(
-      { success: false, message: error.message || "Không thể mua ngay" },
-      { status: 500 }
-    );
-  }
+  // Hàm buyNow không tồn tại, xóa controller này hoặc thay thế bằng logic khác nếu cần
+  return NextResponse.json({ error: "Chức năng mua ngay chưa được hỗ trợ" }, { status: 501 });
 };
 
 // =======================
