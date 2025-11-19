@@ -4,7 +4,7 @@ import {
     getProductById,
     updateProduct,
     deleteProduct as deleteProductModel,
-} from '../../../models/product.model';
+} from '~/app/models/product.model';
 
 export async function GET(
     request: NextRequest,

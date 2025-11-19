@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: "Đăng nhập Google thành công!",
       user: {
-        id: userId,
+        userId: userId,
         username: userInfo.Username || username,
         fullname: userInfo.FullName || googleName, // Ưu tiên DB → Google
         email: userInfo.Email || email,

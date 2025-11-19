@@ -1,9 +1,7 @@
-// src/models/recentViewProduct.model.ts
-
 import sql from 'mssql';
 import { getPool } from '../lib/db';
 
-// === INTERFACE ===
+// === INTERFACE ĐÚNG THEO BẢNG ===
 export interface RecentViewProduct {
   Id: number;
   UserId: number;
@@ -14,35 +12,31 @@ export interface RecentViewProduct {
   SKU: string | null;
   Price: number;
   DiscountPrice: number | null;
-  Stock: number;
+  Stock: number | null;
   ImageUrl: string | null;
-  IsPublished: boolean;
-  ViewedAt: Date;
+  IsPublished: boolean | null;
+  ViewedAt: Date | null;
 }
 
-// === GET ALL ===
+// === 1. GET ALL ===
 export const getAllRecentViewProducts = async (): Promise<RecentViewProduct[]> => {
   const pool = await getPool();
-  const result = await pool.request().query(`
-    SELECT rv.* 
-    FROM dbo.RecentViewProducts rv
-    INNER JOIN dbo.Products p ON rv.ProductId = p.ProductId
-    WHERE p.IsPublished = 1
-  `);
+
+  const result = await pool.request().query('SELECT * FROM dbo.RecentViewProducts ORDER BY ViewedAt DESC');
   return result.recordset;
 };
 
-// === GET BY PRODUCT ID (RETURNS ARRAY AS MULTIPLE USERS MAY VIEW SAME PRODUCT) ===
+// === 2. GET BY PRODUCT ID ===
 export const getRecentViewsByProductId = async (productId: number): Promise<RecentViewProduct[]> => {
   const pool = await getPool();
   const result = await pool
     .request()
     .input('ProductId', sql.Int, productId)
-    .query('SELECT * FROM dbo.RecentViewProducts WHERE ProductId = @ProductId');
+    .query('SELECT * FROM dbo.RecentViewProducts WHERE ProductId = @ProductId ORDER BY ViewedAt DESC');
   return result.recordset;
 };
 
-// === GET BY ID ===
+// === 3. GET BY ID ===
 export const getRecentViewById = async (id: number): Promise<RecentViewProduct | null> => {
   const pool = await getPool();
   const result = await pool
@@ -52,52 +46,17 @@ export const getRecentViewById = async (id: number): Promise<RecentViewProduct |
   return result.recordset[0] || null;
 };
 
-// === ADD RECENT VIEW (INSERT OR UPDATE IF EXISTS) ===
+// === 4. ADD RECENT VIEW → DÙNG STORED PROCEDURE (CHỈNH SỬA) ===
 export const addRecentView = async (userId: number, productId: number): Promise<void> => {
   const pool = await getPool();
-  
-  // Kiểm tra product tồn tại trước
-  const productCheck = await pool
-    .request()
-    .input('ProductId', sql.Int, productId)
-    .query('SELECT TOP 1 1 FROM dbo.Products WHERE ProductId = @ProductId');
-  
-  if (productCheck.recordset.length === 0) {
-    throw new Error(`Product with ID ${productId} does not exist`);
-  }
-  
-  // Tiếp tục MERGE
   await pool
     .request()
     .input('UserId', sql.Int, userId)
     .input('ProductId', sql.Int, productId)
-    .query(`
-      MERGE INTO dbo.RecentViewProducts AS target
-      USING (
-        SELECT s.UserId, s.ProductId, p.Name, p.Description, p.CategoryId, p.SKU, p.Price, p.DiscountPrice, p.Stock, p.ImageUrl, p.IsPublished
-        FROM (VALUES (@UserId, @ProductId)) s (UserId, ProductId)
-        INNER JOIN dbo.Products p ON p.ProductId = s.ProductId
-      ) AS source (UserId, ProductId, Name, Description, CategoryId, SKU, Price, DiscountPrice, Stock, ImageUrl, IsPublished)
-      ON target.UserId = source.UserId AND target.ProductId = source.ProductId
-      WHEN MATCHED THEN
-        UPDATE SET 
-          ViewedAt = GETDATE(),
-          Name = source.Name,
-          Description = source.Description,
-          CategoryId = source.CategoryId,
-          SKU = source.SKU,
-          Price = source.Price,
-          DiscountPrice = source.DiscountPrice,
-          Stock = source.Stock,
-          ImageUrl = source.ImageUrl,
-          IsPublished = source.IsPublished
-      WHEN NOT MATCHED THEN
-        INSERT (UserId, ProductId, Name, Description, CategoryId, SKU, Price, DiscountPrice, Stock, ImageUrl, IsPublished, ViewedAt)
-        VALUES (source.UserId, source.ProductId, source.Name, source.Description, source.CategoryId, source.SKU, source.Price, source.DiscountPrice, source.Stock, source.ImageUrl, source.IsPublished, GETDATE());
-    `);
+    .execute('AddRecentView'); // ĐÚNG SP: XÓA CŨ + THÊM MỚI + GIỮ 20
 };
 
-// === UPDATE ===
+// === 5. UPDATE (TÙY CHỌN – KHÔNG DÙNG TRONG SP) ===
 export const updateRecentView = async (
   id: number,
   recentView: Partial<Omit<RecentViewProduct, 'Id'>>
@@ -107,18 +66,13 @@ export const updateRecentView = async (
     const request = pool.request().input('Id', sql.Int, id);
 
     const updates: string[] = [];
-
-    // Map: DB column → input name → SQL type
-    const fieldMap: Record<
-      string,
-      { input: keyof typeof recentView; type: any }
-    > = {
+    const fieldMap: Record<string, { input: keyof typeof recentView; type: any }> = {
       UserId: { input: 'UserId', type: sql.Int },
       ProductId: { input: 'ProductId', type: sql.Int },
-      Name: { input: 'Name', type: sql.NVarChar },
+      Name: { input: 'Name', type: sql.NVarChar(255) },
       Description: { input: 'Description', type: sql.NVarChar },
       CategoryId: { input: 'CategoryId', type: sql.Int },
-      SKU: { input: 'SKU', type: sql.NVarChar },
+      SKU: { input: 'SKU', type: sql.NVarChar(50) },
       Price: { input: 'Price', type: sql.Decimal(18, 2) },
       DiscountPrice: { input: 'DiscountPrice', type: sql.Decimal(18, 2) },
       Stock: { input: 'Stock', type: sql.Int },
@@ -127,7 +81,6 @@ export const updateRecentView = async (
       ViewedAt: { input: 'ViewedAt', type: sql.DateTime },
     };
 
-    // Duyệt từng field trong DB
     for (const [dbField, { input, type }] of Object.entries(fieldMap)) {
       const value = recentView[input];
       if (value !== undefined) {
@@ -140,10 +93,9 @@ export const updateRecentView = async (
 
     const query = `
       DECLARE @Output TABLE (
-        Id INT, UserId INT, ProductId INT, Name NVARCHAR(255), Description NVARCHAR(MAX), CategoryId INT,
-        SKU NVARCHAR(50), Price DECIMAL(18,2), DiscountPrice DECIMAL(18,2),
-        Stock INT, ImageUrl NVARCHAR(255), IsPublished BIT,
-        ViewedAt DATETIME
+        Id INT, UserId INT, ProductId INT, Name NVARCHAR(255), Description NVARCHAR(MAX),
+        CategoryId INT, SKU NVARCHAR(50), Price DECIMAL(18,2), DiscountPrice DECIMAL(18,2),
+        Stock INT, ImageUrl NVARCHAR(MAX), IsPublished BIT, ViewedAt DATETIME
       );
 
       UPDATE dbo.RecentViewProducts
@@ -162,7 +114,7 @@ export const updateRecentView = async (
   }
 };
 
-// === DELETE ===
+// === 6. DELETE ===
 export const deleteRecentView = async (id: number): Promise<boolean> => {
   const pool = await getPool();
   const result = await pool
@@ -172,12 +124,21 @@ export const deleteRecentView = async (id: number): Promise<boolean> => {
   return result.rowsAffected[0] > 0;
 };
 
-// === GET RECENT VIEWS FOR USER ===
-export const getRecentViewProducts = async (userId: number, limit: number = 10): Promise<RecentViewProduct[]> => {
+// === 7. GET RECENT VIEWS FOR USER → DÙNG STORED PROCEDURE (CHỈNH SỬA) ===
+export const getRecentViewProducts = async (userId: number, limit: number = 10): Promise<{
+  ProductId: number;
+  Name: string;
+  Price: number;
+  DiscountPrice: number | null;
+  DisplayPrice: number;
+  ImageUrl: string | null;
+  ViewedAt: Date | null;
+}[]> => {
   const pool = await getPool();
   const result = await pool
     .request()
     .input('UserId', sql.Int, userId)
+<<<<<<< HEAD
     .input('Limit', sql.Int, limit)
     .query(`
       SELECT TOP (@Limit) rv.* 
@@ -186,5 +147,10 @@ export const getRecentViewProducts = async (userId: number, limit: number = 10):
       WHERE rv.UserId = @UserId AND p.IsPublished = 1
       ORDER BY rv.ViewedAt DESC
     `);
+=======
+    .input('Limit', sql.Int, Math.min(limit, 50))
+    .execute('GetRecentViewedProducts'); // ĐÚNG SP: TRẢ VỀ DisplayPrice
+
+>>>>>>> 9bea2a4a547455a564a56ea28cc759a3544f14c2
   return result.recordset;
 };

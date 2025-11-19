@@ -38,9 +38,11 @@ export const getPool = async (): Promise<sql.ConnectionPool> => {
     pool = await new sql.ConnectionPool(config).connect();
     console.log('✅ Connected to SQL Server:', config.database);
 
-    // Test query
-    // const testResult = await pool.request().query('SELECT 1 AS test');
-    // console.log('Test query result:', testResult.recordset);
+    // 🔥 Check database Node is really executing on
+    const dbInfo = await pool.request().query(`
+        SELECT DB_NAME() AS currentDb, @@SERVERNAME AS serverName
+    `);
+    console.log("🔥 NODE is actually using:", dbInfo.recordset[0]);
 
     return pool;
   } catch (err) {

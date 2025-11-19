@@ -1,127 +1,171 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getOrdersByUserId, createOrder as createOrderModel, cancelOrder, getAllOrders, getOrderDetails, updateOrderStatus, placeOrderFromCart } from '../models/order.model';
-import { verifyToken } from './user.controller';
+import { NextRequest, NextResponse } from "next/server";
+import {
+  getOrdersByUserId,
+  placeOrderFromCart,
+  buyNow,
+  cancelOrder,
+  getAllOrders,
+  getOrderDetails,
+  updateOrderStatus,
+} from "~/app/models/order.model";
+import { verifyToken } from "./user.controller";
 
+export const requireLogin = async (req: NextRequest) => {
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  const token = auth.substring(7);
+  try {
+    const user = await verifyToken(token);
+    return user;
+  } catch (err) {
+    console.error("Token verify error:", err);
+    return null;
+  }
+};
+
+// =======================
+// LẤY DANH SÁCH ĐƠN HÀNG CỦA USER
+// =======================
 export const getOrders = async (req: NextRequest) => {
+  const user = await requireLogin(req);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const status = searchParams.get("status") ?? undefined;
+  const search = searchParams.get("search") ?? undefined;
+  const page = parseInt(searchParams.get("page") || "1");
+  const limit = parseInt(searchParams.get("limit") || "10");
+
   try {
-    const token = req.headers.get('Authorization')?.split(' ')[1];
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const result = await getOrdersByUserId({
+      userId: user.userId,
+      status: status === "all" ? undefined : status,
+      search: search || undefined,
+      page,
+      limit,
+    });
 
-    const user = await verifyToken(token);
-    if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-
-    const orders = await getOrdersByUserId(user.userId);
-    return NextResponse.json({ success: true, data: orders });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to fetch orders' }, { status: 500 });
+    return NextResponse.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error("getOrders error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Lỗi server" },
+      { status: 500 }
+    );
   }
 };
 
-export const createOrder = async (req: NextRequest) => {
-  try {
-    const token = req.headers.get('Authorization')?.split(' ')[1];
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const user = await verifyToken(token);
-    if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-
-    const body = await req.json();
-    if (!body.product_id || !body.quantity || !body.total_price) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
-
-    const newOrder = await createOrderModel({ ...body, user_id: user.userId });
-    return NextResponse.json({ success: true, data: newOrder }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to create order' }, { status: 500 });
-  }
-};
-
+// =======================
+// ĐẶT HÀNG TỪ GIỎ HÀNG (DÙNG AddressId)
+// =======================
 export const placeOrderFromCartController = async (req: NextRequest) => {
+  const user = await requireLogin(req);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { cartId, addressId } = await req.json();
+
+  if (!cartId || !addressId) {
+    return NextResponse.json(
+      { error: "Thiếu cartId hoặc addressId" },
+      { status: 400 }
+    );
+  }
+
   try {
-    const token = req.headers.get('Authorization')?.split(' ')[1];
-    const user = token ? await verifyToken(token) : null;
-
-    const body = await req.json();
-    const { cartId, recipientName, recipientPhone, recipientAddress } = body;
-    if (!cartId || !recipientName || !recipientPhone || !recipientAddress) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
-
-    const orderId = await placeOrderFromCart(cartId, user?.userId ?? null, recipientName, recipientPhone, recipientAddress);
-    return NextResponse.json({ success: true, data: { orderId } }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to place order from cart' }, { status: 500 });
+    const orderId = await placeOrderFromCart(cartId, user.userId, addressId);
+    return NextResponse.json(
+      { success: true, data: { orderId } },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error("placeOrderFromCartController error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Không thể đặt hàng" },
+      { status: 500 }
+    );
   }
 };
 
+// =======================
+// MUA NGAY (DÙNG AddressId)
+// =======================
+export const buyNowController = async (req: NextRequest) => {
+  const user = await requireLogin(req);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { productId, quantity, addressId } = await req.json();
+
+  if (!productId || !quantity || !addressId) {
+    return NextResponse.json(
+      { error: "Thiếu productId, quantity hoặc addressId" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const orderId = await buyNow(user.userId, productId, quantity, addressId);
+    return NextResponse.json(
+      { success: true, data: { orderId } },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error("buyNowController error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Không thể mua ngay" },
+      { status: 500 }
+    );
+  }
+};
+
+// =======================
+// HỦY ĐƠN HÀNG
+// =======================
 export const cancelOrderController = async (req: NextRequest) => {
-  try {
-    const token = req.headers.get('Authorization')?.split(' ')[1];
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const user = await verifyToken(token);
-    if (!user) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-
-    const body = await req.json();
-    const { orderId } = body;
-    if (!orderId) return NextResponse.json({ error: 'Missing order ID' }, { status: 400 });
-
-    await cancelOrder(orderId, user.userId);
-    return NextResponse.json({ success: true, message: 'Order cancelled' });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to cancel order' }, { status: 500 });
+  // 1. XÁC THỰC USER
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-};
+  const token = auth.substring(7);
 
-export const getAllOrdersAdmin = async (req: NextRequest) => {
+  let user: { userId: number } | null = null; // khai báo kiểu rõ ràng
   try {
-    const token = req.headers.get('Authorization')?.split(' ')[1];
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const user = await verifyToken(token);
-    if (!user || user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-    const orders = await getAllOrders();
-    return NextResponse.json({ success: true, data: orders });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to fetch all orders' }, { status: 500 });
+    user = await verifyToken(token);
+  } catch (err) {
+    console.error("Token verify error:", err);
+    return NextResponse.json({ error: "Token không hợp lệ" }, { status: 401 });
   }
-};
 
-export const getOrderDetailsAdmin = async (req: NextRequest) => {
-  try {
-    const token = req.headers.get('Authorization')?.split(' ')[1];
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const user = await verifyToken(token);
-    if (!user || user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-    const orderId = parseInt(req.nextUrl.searchParams.get('orderId') || '0', 10);
-    if (!orderId) return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
-
-    const order = await getOrderDetails(orderId);
-    return NextResponse.json({ success: true, data: order });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to fetch order details' }, { status: 500 });
+  // KIỂM TRA user CÓ TỒN TẠI
+  if (!user || !user.userId) {
+    return NextResponse.json({ error: "Không tìm thấy người dùng" }, { status: 401 });
   }
-};
 
-export const updateOrderStatusAdmin = async (req: NextRequest) => {
+  // 2. ĐỌC BODY
+  let body;
   try {
-    const token = req.headers.get('Authorization')?.split(' ')[1];
-    if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    body = await req.json();
+  } catch (err) {
+    return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
+  }
 
-    const user = await verifyToken(token);
-    if (!user || user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const { orderId } = body;
+  if (!orderId || isNaN(Number(orderId))) {
+    return NextResponse.json({ error: "Thiếu hoặc sai orderId" }, { status: 400 });
+  }
 
-    const body = await req.json();
-    const { orderId, status } = body;
-    if (!orderId || !status) return NextResponse.json({ error: 'Missing order ID or status' }, { status: 400 });
-
-    await updateOrderStatus(orderId, status);
-    return NextResponse.json({ success: true, message: 'Order status updated' });
-  } catch (error) {
-    return NextResponse.json({ success: false, error: 'Failed to update order status' }, { status: 500 });
+  // 3. GỌI MODEL – ĐÃ ĐẢM BẢO user.userId KHÔNG NULL
+  try {
+    await cancelOrder(Number(orderId), user.userId);
+    return NextResponse.json(
+      { success: true, message: "Đơn hàng đã hủy thành công" },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("Cancel order error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Không thể hủy đơn" },
+      { status: 400 }
+    );
   }
 };
