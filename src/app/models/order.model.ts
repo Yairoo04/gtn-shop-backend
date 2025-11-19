@@ -42,7 +42,7 @@ export const createOrder = async (order: Omit<Order, 'orderId'>): Promise<Order>
     await pool.request()
       .input('OrderId', sql.Int, newOrderId)
       .input('ProductId', sql.Int, order.productId)
-      .input('ProductName', sql.NVarChar, 'Placeholder Name') 
+      .input('ProductName', sql.NVarChar, 'Placeholder Name')
       .input('UnitPrice', sql.Decimal(18, 2), order.totalPrice / order.quantity)
       .input('Quantity', sql.Int, order.quantity)
       .query(`
@@ -168,3 +168,71 @@ export const placeOrderFromCartWithSelection = async (
     throw error;
   }
 };
+
+// getOrderByUserIdCustomer dung cho Quan ly don hang
+export const getOrdersByUserIdCustomer = async (userId: number) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.request()
+      .input("UserId", sql.Int, userId)
+      .query(`
+        SELECT 
+          O.OrderId,
+          O.UserId,
+          O.TotalAmount,
+          O.CreatedAt,
+          O.StatusId,
+          S.StatusName,
+          (SELECT COUNT(*) FROM OrderItems OI WHERE OI.OrderId = O.OrderId) AS ItemCount
+        FROM Orders O
+        JOIN OrderStatus S ON O.StatusId = S.StatusId
+        WHERE O.UserId = @UserId
+        ORDER BY O.CreatedAt DESC
+      `);
+
+    return result.recordset;
+  } catch (err) {
+    console.error("getOrdersByUserIdCustomer error:", err);
+    throw err;
+  }
+};
+
+
+// Dung cho Xem chi tiet trong quan ly don hang
+export const getOrderDetailsCustomer = async (orderId: number) => {
+  const pool = await getPool();
+
+  const result = await pool
+    .request()
+    .input("OrderId", sql.Int, orderId)
+    .execute("dbo.GetOrderDetails") as sql.IProcedureResult<any>;
+
+  const recordsets = result.recordsets as sql.IRecordSet<any>[];
+  const orderInfo = recordsets[0]?.[0] || null;
+  const items = recordsets[1] || [];
+
+  if (!orderInfo) return null;
+
+  return {
+    orderInfo: {
+      OrderId: orderInfo.OrderId,
+      UserId: orderInfo.UserId,
+      CreatedAt: orderInfo.CreatedAt,
+      StatusName: orderInfo.StatusName || 'Pending',
+      RecipientName: orderInfo.RecipientName,
+      RecipientPhone: orderInfo.RecipientPhone,
+      RecipientAddress: orderInfo.RecipientAddress,
+      TotalAmount: Number(orderInfo.TotalAmount) || 0,
+    },
+    items: items.map((i: any) => ({
+      ProductId: i.ProductId,
+      Name: i.ProductName,
+      Quantity: i.Quantity,
+      Price: Number(i.Price) || 0,  // SỬA: i.Price, KHÔNG PHẢI i.UnitPrice
+    })),
+  };
+};
+
+
+
+

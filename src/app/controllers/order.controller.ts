@@ -7,6 +7,7 @@ import {
   getAllOrders,
   getOrderDetails,
   updateOrderStatus,
+  getOrdersByUserIdCustomer,
 } from "~/app/models/order.model";
 import { verifyToken } from "./user.controller";
 
@@ -161,3 +162,38 @@ export const cancelOrderController = async (req: NextRequest) => {
     );
   }
 };
+
+// Dung cho Quan ly don hang 
+export const getOrderCustomer = async (req: NextRequest) => {
+  const user = await requireLogin(req);
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const page = parseInt(new URL(req.url).searchParams.get("page") || "1");
+  const limit = parseInt(new URL(req.url).searchParams.get("limit") || "10");
+
+  try {
+    const allOrders = await getOrdersByUserIdCustomer(user.userId);
+
+    // phân trang
+    const total = allOrders.length;
+    const totalPages = Math.ceil(total / limit);
+    const start = (page - 1) * limit;
+    const paginated = allOrders.slice(start, start + limit);
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        orders: paginated,
+        pagination: { total, totalPages }
+      },
+    });
+  } catch (error: any) {
+    console.error("getOrders error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Lỗi server" },
+      { status: 500 }
+    );
+  }
+};
+
