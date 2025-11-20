@@ -6,19 +6,20 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 
 const getUserIdFromToken = (req: any): number => {
   const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) throw new Error('Missing Bearer token');
+  if (!authHeader?.startsWith('Bearer ')) throw new Error('Missing token');
 
   const token = authHeader.split(' ')[1];
   if (!token) throw new Error('Empty token');
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { id?: number; userId?: number; sub?: string };
-    const userId = payload.id || payload.userId || payload.sub;
-    if (!userId || isNaN(Number(userId))) throw new Error('Invalid userId in token');
+    const payload = jwt.verify(token, JWT_SECRET) as { userId?: number; id?: number; sub?: string };
+    const userId = payload.userId ?? payload.id ?? payload.sub;
+    if (!userId || isNaN(Number(userId))) throw new Error('Invalid userId');
+
     return Number(userId);
   } catch (err: any) {
     console.error('JWT Verify Error:', err.message);
-    throw new Error('Invalid or expired token');
+    throw new Error('Token không hợp lệ hoặc hết hạn');
   }
 };
 
@@ -41,15 +42,15 @@ export const createAddress = async (req: any): Promise<Address> => {
   }
 
   const pool = await getPool();
-  const request = pool.request();
 
+  // Tách riêng request cho mỗi query
   if (IsDefault) {
-    await request.input('UserId', userId)
-      .query('UPDATE Addresses SET IsDefault = 0 WHERE UserId = @UserId AND IsDefault = 1');
+    await pool.request()
+      .input('UserId', userId)
+      .query('UPDATE Addresses SET IsDefault = 0 WHERE UserId = @UserId');
   }
 
-  // DÙNG .query() THƯỜNG, KHÔNG DÙNG tagged template
-  const result = await request
+  const result = await pool.request() // Request MỚI
     .input('UserId', userId)
     .input('ReceiverName', ReceiverName)
     .input('PhoneNumber', PhoneNumber)
@@ -58,10 +59,9 @@ export const createAddress = async (req: any): Promise<Address> => {
     .input('Province', Province)
     .input('IsDefault', IsDefault ? 1 : 0)
     .query(`
-      INSERT INTO Addresses (UserId, ReceiverName, PhoneNumber, Street, City, Province, IsDefault)
-      OUTPUT INSERTED.AddressId, INSERTED.UserId, INSERTED.ReceiverName, INSERTED.PhoneNumber, 
-             INSERTED.Street, INSERTED.City, INSERTED.Province, INSERTED.IsDefault, INSERTED.CreatedAt
-      VALUES (@UserId, @ReceiverName, @PhoneNumber, @Street, @City, @Province, @IsDefault)
+      INSERT INTO Addresses (UserId, ReceiverName, PhoneNumber, Street, City, Province, IsDefault, CreatedAt)
+      OUTPUT INSERTED.*
+      VALUES (@UserId, @ReceiverName, @PhoneNumber, @Street, @City, @Province, @IsDefault, SYSUTCDATETIME())
     `);
 
   return result.recordset[0];
