@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { getOrderCustomer } from "~/app/controllers/order.controller";
+import { getOrders  } from "~/app/controllers/order.controller";
 
 export async function GET(req: NextRequest) {
-  return getOrderCustomer(req);
+  return getOrders(req);
 }
 
 // CORS

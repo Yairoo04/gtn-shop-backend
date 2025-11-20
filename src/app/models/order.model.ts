@@ -10,6 +10,101 @@ export interface Order {
   status: string;
 }
 
+export interface CustomerOrderFilter {
+  status?: string;     // Pending / Processing / ...
+  search?: string;     // mã đơn hoặc tên sản phẩm
+  page?: number;
+  limit?: number;
+}
+
+// Dùng cho Quản lý đơn hàng (customer)
+export const getOrdersByUserIdCustomer = async (
+  userId: number,
+  options: CustomerOrderFilter = {}
+) => {
+  const {
+    status,
+    search,
+    page = 1,
+    limit = 10,
+  } = options;
+
+  const offset = (page - 1) * limit;
+
+  try {
+    const pool = await getPool();
+
+    const listRequest = pool.request()
+      .input("UserId", sql.Int, userId)
+      .input("Status", sql.NVarChar(50), status || null)
+      .input("Search", sql.NVarChar(255), search ? `%${search}%` : null)
+      .input("Offset", sql.Int, offset)
+      .input("Limit", sql.Int, limit);
+
+    // WHERE chung cho cả 2 query
+    const baseWhere = `
+      WHERE O.UserId = @UserId
+        AND (@Status IS NULL OR S.StatusName = @Status)
+        AND (
+          @Search IS NULL
+          OR CAST(O.OrderId AS NVARCHAR(50)) LIKE @Search
+          OR EXISTS (
+              SELECT 1
+              FROM OrderItems OI
+              WHERE OI.OrderId = O.OrderId
+                AND OI.ProductName LIKE @Search
+          )
+        )
+    `;
+
+    const listSql = `
+      SELECT 
+        O.OrderId,
+        O.UserId,
+        O.TotalAmount,
+        O.CreatedAt,
+        O.StatusId,
+        S.StatusName,
+        (SELECT COUNT(*) FROM OrderItems OI WHERE OI.OrderId = O.OrderId) AS ItemCount
+      FROM Orders O
+      JOIN OrderStatus S ON O.StatusId = S.StatusId
+      ${baseWhere}
+      ORDER BY O.CreatedAt DESC
+      OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;
+    `;
+
+    const countRequest = pool.request()
+      .input("UserId", sql.Int, userId)
+      .input("Status", sql.NVarChar(50), status || null)
+      .input("Search", sql.NVarChar(255), search ? `%${search}%` : null);
+
+    const countSql = `
+      SELECT COUNT(*) AS Total
+      FROM Orders O
+      JOIN OrderStatus S ON O.StatusId = S.StatusId
+      ${baseWhere};
+    `;
+
+    const [listResult, countResult] = await Promise.all([
+      listRequest.query(listSql),
+      countRequest.query(countSql),
+    ]);
+
+    const orders = listResult.recordset;
+    const total = countResult.recordset[0]?.Total ?? 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return {
+      orders,
+      pagination: { total, totalPages },
+    };
+  } catch (err) {
+    console.error("getOrdersByUserIdCustomer error:", err);
+    throw err;
+  }
+};
+
+
 export const getOrdersByUserId = async (userId: number): Promise<Order[]> => {
   try {
     const pool = await getPool();
@@ -169,33 +264,33 @@ export const placeOrderFromCartWithSelection = async (
   }
 };
 
-// getOrderByUserIdCustomer dung cho Quan ly don hang
-export const getOrdersByUserIdCustomer = async (userId: number) => {
-  try {
-    const pool = await getPool();
-    const result = await pool.request()
-      .input("UserId", sql.Int, userId)
-      .query(`
-        SELECT 
-          O.OrderId,
-          O.UserId,
-          O.TotalAmount,
-          O.CreatedAt,
-          O.StatusId,
-          S.StatusName,
-          (SELECT COUNT(*) FROM OrderItems OI WHERE OI.OrderId = O.OrderId) AS ItemCount
-        FROM Orders O
-        JOIN OrderStatus S ON O.StatusId = S.StatusId
-        WHERE O.UserId = @UserId
-        ORDER BY O.CreatedAt DESC
-      `);
+// // getOrderByUserIdCustomer dung cho Quan ly don hang
+// export const getOrdersByUserIdCustomer = async (userId: number) => {
+//   try {
+//     const pool = await getPool();
+//     const result = await pool.request()
+//       .input("UserId", sql.Int, userId)
+//       .query(`
+//         SELECT 
+//           O.OrderId,
+//           O.UserId,
+//           O.TotalAmount,
+//           O.CreatedAt,
+//           O.StatusId,
+//           S.StatusName,
+//           (SELECT COUNT(*) FROM OrderItems OI WHERE OI.OrderId = O.OrderId) AS ItemCount
+//         FROM Orders O
+//         JOIN OrderStatus S ON O.StatusId = S.StatusId
+//         WHERE O.UserId = @UserId
+//         ORDER BY O.CreatedAt DESC
+//       `);
 
-    return result.recordset;
-  } catch (err) {
-    console.error("getOrdersByUserIdCustomer error:", err);
-    throw err;
-  }
-};
+//     return result.recordset;
+//   } catch (err) {
+//     console.error("getOrdersByUserIdCustomer error:", err);
+//     throw err;
+//   }
+// };
 
 
 // Dung cho Xem chi tiet trong quan ly don hang
