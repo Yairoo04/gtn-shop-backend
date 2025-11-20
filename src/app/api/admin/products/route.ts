@@ -183,28 +183,34 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Xóa theo thứ tự: RecentViewProducts → ProductSpecs → OrderDetails → Products
+    // Xóa theo thứ tự: CartItems → RecentViewProducts → ProductSpecs → OrderItems → Products
     console.log(`🗑️ Deleting related data for ProductId ${productId}...`);
-    
-    // 1. Xóa RecentViewProducts
+
+    // 1. Xóa CartItems
+    const deleteCartItemsResult = await pool.request()
+      .input('ProductId', sql.Int, parseInt(productId, 10))
+      .query('DELETE FROM dbo.CartItems WHERE ProductId = @ProductId');
+    console.log(`✅ Deleted ${deleteCartItemsResult.rowsAffected[0]} cart items`);
+
+    // 2. Xóa RecentViewProducts
     const deleteRecentViewResult = await pool.request()
       .input('ProductId', sql.Int, parseInt(productId, 10))
       .query('DELETE FROM dbo.RecentViewProducts WHERE ProductId = @ProductId');
     console.log(`✅ Deleted ${deleteRecentViewResult.rowsAffected[0]} recent view records`);
 
-    // 2. Xóa ProductSpecs
+    // 3. Xóa ProductSpecs
     const deleteSpecsResult = await pool.request()
       .input('ProductId', sql.Int, parseInt(productId, 10))
       .query('DELETE FROM dbo.ProductSpecs WHERE ProductId = @ProductId');
     console.log(`✅ Deleted ${deleteSpecsResult.rowsAffected[0]} specs`);
 
-    // 3. Xóa OrderItems (nếu có)
+    // 4. Xóa OrderItems (nếu có)
     const deleteOrderItemsResult = await pool.request()
       .input('ProductId', sql.Int, parseInt(productId, 10))
       .query('DELETE FROM dbo.OrderItems WHERE ProductId = @ProductId');
     console.log(`✅ Deleted ${deleteOrderItemsResult.rowsAffected[0]} order items`);
 
-    // 4. Cuối cùng xóa Product
+    // 5. Cuối cùng xóa Product
     console.log(`🗑️ Deleting Product ${productId}...`);
     await pool.request()
       .input('ProductId', sql.Int, parseInt(productId, 10))
