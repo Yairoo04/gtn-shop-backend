@@ -29,22 +29,47 @@ export const requireLogin = async (req: NextRequest) => {
 // =======================
 export const getOrders = async (req: NextRequest) => {
   const user = await requireLogin(req);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const { searchParams } = new URL(req.url);
-  const status = searchParams.get("status") ?? undefined;
-  const search = searchParams.get("search") ?? undefined;
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "10");
+  const url = new URL(req.url);
+  const searchParams = url.searchParams;
+
+  const statusParam = searchParams.get("status");
+  const search = searchParams.get("search") || undefined;
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const limit = parseInt(searchParams.get("limit") || "10", 10);
+
+  // FE gửi 'all' thì coi như không filter trạng thái
+  const status =
+    statusParam && statusParam !== "all" ? statusParam : undefined;
 
   try {
-    // Chỉ truyền userId cho đúng với model
-    const result = await getOrdersByUserId(user.userId);
-    return NextResponse.json({ success: true, data: result });
+    const { orders, pagination } = await getOrdersByUserIdCustomer(
+      user.userId,
+      {
+        status,
+        search,
+        page,
+        limit,
+      }
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        orders,
+        pagination,
+      },
+    });
   } catch (error: any) {
     console.error("getOrders error:", error);
     return NextResponse.json(
-      { success: false, message: error.message || "Lỗi server" },
+      {
+        success: false,
+        message: error.message || "Lỗi server",
+      },
       { status: 500 }
     );
   }
@@ -163,37 +188,37 @@ export const cancelOrderController = async (req: NextRequest) => {
   }
 };
 
-// Dung cho Quan ly don hang 
-export const getOrderCustomer = async (req: NextRequest) => {
-  const user = await requireLogin(req);
-  if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+// // Dung cho Quan ly don hang 
+// export const getOrderCustomer = async (req: NextRequest) => {
+//   const user = await requireLogin(req);
+//   if (!user)
+//     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const page = parseInt(new URL(req.url).searchParams.get("page") || "1");
-  const limit = parseInt(new URL(req.url).searchParams.get("limit") || "10");
+//   const page = parseInt(new URL(req.url).searchParams.get("page") || "1");
+//   const limit = parseInt(new URL(req.url).searchParams.get("limit") || "10");
 
-  try {
-    const allOrders = await getOrdersByUserIdCustomer(user.userId);
+//   try {
+//     const allOrders = await getOrdersByUserIdCustomer(user.userId);
 
-    // phân trang
-    const total = allOrders.length;
-    const totalPages = Math.ceil(total / limit);
-    const start = (page - 1) * limit;
-    const paginated = allOrders.slice(start, start + limit);
+//     // phân trang
+//     const total = allOrders.length;
+//     const totalPages = Math.ceil(total / limit);
+//     const start = (page - 1) * limit;
+//     const paginated = allOrders.slice(start, start + limit);
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        orders: paginated,
-        pagination: { total, totalPages }
-      },
-    });
-  } catch (error: any) {
-    console.error("getOrders error:", error);
-    return NextResponse.json(
-      { success: false, message: error.message || "Lỗi server" },
-      { status: 500 }
-    );
-  }
-};
+//     return NextResponse.json({
+//       success: true,
+//       data: {
+//         orders: paginated,
+//         pagination: { total, totalPages }
+//       },
+//     });
+//   } catch (error: any) {
+//     console.error("getOrders error:", error);
+//     return NextResponse.json(
+//       { success: false, message: error.message || "Lỗi server" },
+//       { status: 500 }
+//     );
+//   }
+// };
 
