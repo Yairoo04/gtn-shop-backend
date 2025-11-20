@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
         data: products.map(p => ({
           ProductId: p.ProductId,
           Name: p.Name,
-          Price: p.Price,
+          Price: p.OriginalPrice,
           DiscountPrice: p.DiscountPrice,
           DisplayPrice: p.DisplayPrice,
           ImageUrl: p.ImageUrl,
