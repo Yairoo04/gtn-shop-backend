@@ -25,75 +25,57 @@ export async function POST(req: NextRequest) {
     }
 
     const email = payload.email;
-    const googleName = payload.name || "Người dùng Google"; // Tên từ Google
-    const username = email.split("@")[0]; // Dùng email prefix làm Username
+    const googleName = payload.name || "Người dùng Google";
+    const usernameBase = email.split("@")[0];
 
     const pool = await getPool();
 
-    // Kiểm tra user đã tồn tại
+    // Kiểm tra user đã tồn tại chưa
     const checkUser = await pool
       .request()
       .input("Email", sql.NVarChar(255), email)
       .query("SELECT UserId, RoleId FROM Users WHERE Email = @Email");
 
     let userId: number;
-    let roleId: number | string = 2;
+    let roleId: number = 2;
 
     if (checkUser.recordset.length === 0) {
-      // === ĐĂNG KÝ MỚI – KHÔNG DÙNG RegisterUser SP ===
-      const tempPassword = "GoogleAuth@123"; // Đáp ứng mật khẩu mạnh
+      // === ĐĂNG KÝ MỚI – DÙNG SP RegisterUser ĐỂ ĐẢM BẢO HASH ĐÚNG 100% ===
+      const tempPassword = "GoogleAuth@123"; // Mật khẩu mạnh, đáp ứng đủ điều kiện SP
 
-      // Kiểm tra username trùng
+      // Kiểm tra username trùng → tạo username duy nhất
       const checkUsername = await pool
         .request()
-        .input("Username", sql.NVarChar(100), username)
+        .input("Username", sql.NVarChar(100), usernameBase)
         .query("SELECT 1 FROM Users WHERE Username = @Username");
 
       const finalUsername = checkUsername.recordset.length > 0
-        ? `${username}_${Date.now().toString().slice(-6)}`
-        : username;
+        ? `${usernameBase}_${Date.now().toString().slice(-6)}`
+        : usernameBase;
 
-      // Tạo salt + hash password
-      const salt = await pool.request().query("SELECT CRYPT_GEN_RANDOM(32) AS Salt");
-      const saltBin = salt.recordset[0].Salt;
-      const pwBin = Buffer.from(tempPassword);
-      const hashResult = await pool
-        .request()
-        .input("salt", sql.VarBinary, saltBin)
-        .input("pw", sql.VarBinary, pwBin)
-        .query("SELECT HASHBYTES('SHA2_512', @salt + @pw) AS Hash");
-      const hash = hashResult.recordset[0].Hash;
-
-      // Insert user mới
-      const insertResult = await pool
+      // GỌI SP RegisterUser → HASH ĐÚNG HOÀN TOÀN
+      const registerResult = await pool
         .request()
         .input("Username", sql.NVarChar(100), finalUsername)
         .input("Email", sql.NVarChar(255), email)
+        .input("Password", sql.NVarChar(4000), tempPassword)
         .input("Phone", sql.NVarChar(50), null)
-        .input("PasswordSalt", sql.VarBinary, saltBin)
-        .input("PasswordHash", sql.VarBinary, hash)
-        .input("RoleId", sql.Int, 2)
-        .input("CustomerTypeId", sql.Int, 1)
-        .input("FullName", sql.NVarChar(255), googleName) // Lưu tên thật
-        .query(`
-          INSERT INTO Users (
-            Username, Email, Phone, PasswordSalt, PasswordHash,
-            RoleId, CustomerTypeId, FullName, CreatedAt, UpdatedAt
-          )
-          OUTPUT INSERTED.UserId
-          VALUES (
-            @Username, @Email, @Phone, @PasswordSalt, @PasswordHash,
-            @RoleId, @CustomerTypeId, @FullName, SYSUTCDATETIME(), SYSUTCDATETIME()
-          )
-        `);
+        .execute("RegisterUser");
 
-      userId = insertResult.recordset[0].UserId;
+      userId = registerResult.recordset[0].NewUserId;
 
-      // Ghi log
+      // Cập nhật FullName từ Google (SP RegisterUser không có cột FullName)
       await pool
         .request()
         .input("UserId", sql.Int, userId)
-        .input("Action", sql.NVarChar(50), "Register")
+        .input("FullName", sql.NVarChar(255), googleName)
+        .query("UPDATE Users SET FullName = @FullName, UpdatedAt = SYSUTCDATETIME() WHERE UserId = @UserId");
+
+      // Log đăng ký Google
+      await pool
+        .request()
+        .input("UserId", sql.Int, userId)
+        .input("Action", sql.NVarChar(50), "Register_Google")
         .input("Meta", sql.NVarChar(255), `Email=${email}`)
         .query("INSERT INTO AuditLogs (UserId, Action, Meta) VALUES (@UserId, @Action, @Meta)");
     } else {
@@ -102,44 +84,40 @@ export async function POST(req: NextRequest) {
       roleId = checkUser.recordset[0].RoleId || 2;
     }
 
-    // Lấy thông tin đầy đủ từ DB (giống login thường)
+    // Lấy thông tin user (đảm bảo có FullName mới nhất)
     const userQuery = await pool
       .request()
       .input("UserId", sql.Int, userId)
       .query(`
-        SELECT 
-          Username, FullName, Email, Phone, RoleId, IsActive
-        FROM Users 
-        WHERE UserId = @UserId
+        SELECT Username, FullName, Email, Phone, RoleId, IsActive
+        FROM Users WHERE UserId = @UserId
       `);
 
     const userInfo = userQuery.recordset[0] || {};
 
-    // Cập nhật FullName nếu chưa có (từ Google)
+    // Cập nhật FullName nếu lần đầu chưa có
     if (!userInfo.FullName && googleName !== "Người dùng Google") {
       await pool
         .request()
         .input("UserId", sql.Int, userId)
         .input("FullName", sql.NVarChar(255), googleName)
         .query("UPDATE Users SET FullName = @FullName, UpdatedAt = SYSUTCDATETIME() WHERE UserId = @UserId");
-
       userInfo.FullName = googleName;
     }
 
-    // Tạo JWT giống hệt login thường
+    // Tạo JWT (dùng userId để tránh lỗi mssql như trước)
     const jwtToken = jwt.sign(
       { id: userId, email, role: roleId },
       JWT_SECRET,
       { expiresIn: "2d" }
     );
 
-    // Trả về giống hệt login thường
     return NextResponse.json({
       message: "Đăng nhập Google thành công!",
       user: {
-        userId: userId,
-        username: userInfo.Username || username,
-        fullname: userInfo.FullName || googleName, // Ưu tiên DB → Google
+        userId,
+        username: userInfo.Username || usernameBase,
+        fullname: userInfo.FullName || googleName,
         email: userInfo.Email || email,
         phone: userInfo.Phone || "",
         role: roleId,

@@ -128,7 +128,7 @@ export const deleteRecentView = async (id: number): Promise<boolean> => {
 export const getRecentViewProducts = async (userId: number, limit: number = 10): Promise<{
   ProductId: number;
   Name: string;
-  Price: number;
+  OriginalPrice: number;
   DiscountPrice: number | null;
   DisplayPrice: number;
   ImageUrl: string | null;
