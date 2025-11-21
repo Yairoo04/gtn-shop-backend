@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
           u.PasswordSalt,
           u.PasswordHash,
           u.RoleId,
+          u.IsActive,
           r.RoleName
         FROM dbo.Users u
         INNER JOIN dbo.Roles r ON u.RoleId = r.RoleId
@@ -41,6 +42,13 @@ export async function POST(req: NextRequest) {
     }
 
     const user = userResult.recordset[0];
+    // Check IsActive
+    if (!user.IsActive) {
+      return NextResponse.json(
+        { success: false, error: 'Bạn không có quyền đăng nhập vào hệ thống' },
+        { status: 403 }
+      );
+    }
 
     // 2. Kiểm tra role (chỉ Admin/Staff được login vào admin panel)
     if (!['Admin', 'Staff'].includes(user.RoleName)) {
@@ -100,6 +108,7 @@ export async function POST(req: NextRequest) {
         username: user.Username,
         email: user.Email,
         role: user.RoleName,
+        isActive: user.IsActive,
       }
     });
 
