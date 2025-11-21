@@ -178,21 +178,80 @@ export const getAllOrders = async (): Promise<Order[]> => {
   }
 };
 
-export const getOrderDetails = async (orderId: number): Promise<any> => {
+export const getOrderDetails = async (orderId: number) => {
   try {
     const pool = await getPool();
     const request = pool.request().input('OrderId', sql.Int, orderId);
     const result = await request.execute('dbo.GetOrderDetails');
-    // Ép kiểu về mssql.IRecordSet<any>[] để truy cập đúng các result set
+
     const recordsets = result.recordsets as sql.IRecordSet<any>[];
-    if (!recordsets || recordsets.length < 2) {
-      return null;
-    }
-    const orderInfo = recordsets[0][0];
-    const items = recordsets[1];
-    const order = { ...orderInfo, items };
-    console.log('Order details fetched:', order);
-    return order;
+    if (!recordsets || recordsets.length < 2) return null;
+
+    const orderInfoRaw = recordsets[0][0]; // Thông tin chung của đơn
+    const rawItems = recordsets[1]; // Danh sách sản phẩm
+
+    if (!orderInfoRaw) return null;
+
+    // === HÀM CHUẨN HÓA ẢNH ===
+    const normalizeImageUrl = (rawUrl: any): string => {
+      if (!rawUrl) return '/images/placeholder.png';
+
+      let url = String(rawUrl).trim();
+
+      // BƯỚC QUAN TRỌNG NHẤT: LOẠI BỎ DẤU NHÁY ĐƠN BAO NGOÀI (NGUYÊN NHÂN CHÍNH!)
+      if ((url.startsWith("'") && url.endsWith("'")) || (url.startsWith('"') && url.endsWith('"'))) {
+        url = url.slice(1, -1);
+      }
+
+      // Fix escape \"
+      url = url.replace(/\\"/g, '"');
+
+      // Bây giờ mới parse được!
+      if (url.startsWith('[') && url.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(url);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            url = parsed[0];
+          }
+        } catch (e) {
+          console.log('JSON parse failed sau khi fix nháy:', url);
+        }
+      }
+
+      // Fix dấu \ thừa
+      url = url.replace(/\\/g, '/');
+
+      // Đảm bảo có / đầu
+      if (url && !url.startsWith('/') && !url.startsWith('http')) {
+        url = '/' + url;
+      }
+      return url && /\.(webp|jpg|jpeg|png|gif)$/i.test(url) ? url : '/images/placeholder.png';
+    };
+    // === CHUẨN HÓA ORDER INFO ===
+    const orderInfo = {
+      OrderId: orderInfoRaw.OrderId,
+      UserId: orderInfoRaw.UserId,
+      CreatedAt: orderInfoRaw.CreatedAt,
+      StatusName: orderInfoRaw.StatusName || 'Pending',
+      RecipientName: orderInfoRaw.RecipientName || 'Khách lẻ',
+      RecipientPhone: orderInfoRaw.RecipientPhone || '—',
+      RecipientAddress: orderInfoRaw.RecipientAddress || '—',
+      TotalAmount: Number(orderInfoRaw.TotalAmount || 0),
+    };
+
+    // === CHUẨN HÓA ITEMS ===
+    const items = rawItems.map((i: any) => ({
+      ProductId: i.ProductId,
+      ProductName: i.ProductName || 'Sản phẩm không tên',
+      Quantity: Number(i.Quantity || 1),
+      Price: Number(i.Price || i.UnitPrice || 0),
+      ImageUrl: normalizeImageUrl(i.ImageUrl),
+    }));
+
+    return {
+      orderInfo,
+      items,
+    };
   } catch (error) {
     console.error('Error fetching order details:', error);
     throw error;
@@ -324,6 +383,7 @@ export const getOrderDetailsCustomer = async (orderId: number) => {
       Name: i.ProductName,
       Quantity: i.Quantity,
       Price: Number(i.Price) || 0,  // SỬA: i.Price, KHÔNG PHẢI i.UnitPrice
+      ImageUrl: i.ImageUrl,
     })),
   };
 };
