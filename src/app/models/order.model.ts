@@ -388,6 +388,96 @@ export const getOrderDetailsCustomer = async (orderId: number) => {
   };
 };
 
+// Mua ngay - Buy now
+export const buyNow = async (
+  userId: number,
+  productId: number,
+  quantity: number = 1,
+  addressId: number
+): Promise<string> => {
+  const pool = await getPool();
+  const transaction = pool.transaction();
+  await transaction.begin();
+
+  try {
+    // 1. KIỂM TRA ĐỊA CHỈ CÓ THUỘC USER KHÔNG
+    const addrResult = await transaction.request()
+      .input('AddressId', sql.Int, addressId)
+      .input('UserId', sql.Int, userId)
+      .query(`
+        SELECT AddressId 
+        FROM Addresses 
+        WHERE AddressId = @AddressId AND UserId = @UserId AND IsDefault = 0 OR IsDefault = 1
+      `);
+
+    if (addrResult.recordset.length === 0) {
+      throw new Error('Địa chỉ không tồn tại hoặc không thuộc về bạn!');
+    }
+
+    // 2. KIỂM TRA SẢN PHẨM + TỒN KHO
+    const productResult = await transaction.request()
+      .input('ProductId', sql.Int, productId)
+      .query(`
+        SELECT Name, Price, Stock, ImageUrl
+        FROM Products
+        WHERE ProductId = @ProductId AND IsPublished = 1
+      `);
+
+    if (productResult.recordset.length === 0) {
+      throw new Error('Sản phẩm không tồn tại hoặc đã bị ẩn');
+    }
+
+    const product = productResult.recordset[0];
+    if (product.Stock < quantity) {
+      throw new Error(`Chỉ còn ${product.Stock} sản phẩm "${product.Name}" trong kho!`);
+    }
+
+    const totalAmount = product.Price * quantity;
+
+    // 3. TẠO ĐƠN HÀNG – CHỈ LƯU AddressId (ĐÚNG CHUẨN DB CỦA BẠN!)
+    const orderResult = await transaction.request()
+      .input('UserId', sql.Int, userId)
+      .input('TotalAmount', sql.Decimal(18, 2), totalAmount)
+      .input('AddressId', sql.Int, addressId)
+      .query(`
+        INSERT INTO Orders (UserId, TotalAmount, Status, AddressId, CreatedAt)
+        OUTPUT INSERTED.OrderId
+        VALUES (@UserId, @TotalAmount, 'Pending', @AddressId, GETDATE())
+      `);
+
+    const orderId = orderResult.recordset[0].OrderId;
+
+    // 4. THÊM CHI TIẾT ĐƠN HÀNG (dùng bảng OrderItems – đúng chuẩn của bạn)
+    await transaction.request()
+      .input('OrderId', sql.Int, orderId)
+      .input('ProductId', sql.Int, productId)
+      .input('ProductName', sql.NVarChar(300), product.Name)
+      .input('UnitPrice', sql.Decimal(18, 2), product.Price)
+      .input('Quantity', sql.Int, quantity)
+      .query(`
+        INSERT INTO OrderItems (OrderId, ProductId, ProductName, UnitPrice, Quantity)
+        VALUES (@OrderId, @ProductId, @ProductName, @UnitPrice, @Quantity)
+      `);
+
+    // 5. TRỪ KHO
+    await transaction.request()
+      .input('ProductId', sql.Int, productId)
+      .input('Quantity', sql.Int, quantity)
+      .query(`
+        UPDATE Products 
+        SET Stock = Stock - @Quantity 
+        WHERE ProductId = @ProductId AND Stock >= @Quantity
+      `);
+
+    await transaction.commit();
+    return orderId.toString();
+
+  } catch (error: any) {
+    await transaction.rollback();
+    console.error('buyNow error:', error);
+    throw error;
+  }
+};
 
 
 

@@ -1,3 +1,4 @@
+import e from "express";
 import sql from "mssql";
 import { getPool } from "~/app/lib/db";
 
@@ -34,7 +35,7 @@ export interface CartItem {
   PriceAtAdded: number;
   Quantity: number;
   LineTotal: number;
-  Stock?: number; 
+  Stock?: number;
 }
 
 export const viewCart = async (cartId: string): Promise<CartItem[]> => {
@@ -89,13 +90,22 @@ export const updateCartItem = async (
   productId: number,
   quantity: number
 ): Promise<{ LineTotal: number }> => {
-  const pool = await getPool();
-  const result = await pool
-    .request()
-    .input("CartId", sql.UniqueIdentifier, cartId)
-    .input("ProductId", sql.Int, productId)
-    .input("Quantity", sql.Int, quantity)
-    .execute("dbo.UpdateCartItem");
+  try {
+    const pool = await getPool();
+    const result = await pool
+      .request()
+      .input("CartId", sql.UniqueIdentifier, cartId)
+      .input("ProductId", sql.Int, productId)
+      .input("Quantity", sql.Int, quantity)
+      .execute("dbo.UpdateCartItem");
 
-  return { LineTotal: result.recordset[0]?.LineTotal || 0 };
+    return { LineTotal: result.recordset[0]?.LineTotal || 0 };
+  } catch (error: any) {
+    console.error("Error in updateCartItem:", error);
+    if ([50010, 50011, 50012, 50013].includes(error.number)) {
+      throw new Error(error.message);
+    }
+    throw new Error("Không thể cập nhật mục giỏ hàng: " + error.message);
+  }
 };
+
