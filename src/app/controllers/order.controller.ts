@@ -8,6 +8,7 @@ import {
   getOrderDetails,
   updateOrderStatus,
   getOrdersByUserIdCustomer,
+  buyNow,
 } from "~/app/models/order.model";
 import { verifyToken } from "./user.controller";
 
@@ -122,17 +123,46 @@ export const buyNowController = async (req: NextRequest) => {
   const user = await requireLogin(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { productId, quantity, addressId } = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
+  }
 
-  if (!productId || !quantity || !addressId) {
+  const { productId, quantity = 1, addressId } = body;
+
+  if (!productId || !addressId) {
     return NextResponse.json(
-      { error: "Thiếu productId, quantity hoặc addressId" },
+      { message: "Thiếu productId hoặc addressId" },
       { status: 400 }
     );
   }
 
-  // Hàm buyNow không tồn tại, xóa controller này hoặc thay thế bằng logic khác nếu cần
-  return NextResponse.json({ error: "Chức năng mua ngay chưa được hỗ trợ" }, { status: 501 });
+  try {
+    const orderId = await buyNow(
+      user.userId,
+      Number(productId),
+      Number(quantity),
+      Number(addressId)
+    );
+
+    return NextResponse.json(
+      { success: true, data: { orderId } },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error("buyNowController error:", error);
+
+    if (error.message.includes("kho") || error.message.includes("không tồn tại")) {
+      return NextResponse.json({ message: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json(
+      { message: error.message || "Đặt hàng thất bại" },
+      { status: 500 }
+    );
+  }
 };
 
 // =======================
@@ -188,7 +218,7 @@ export const cancelOrderController = async (req: NextRequest) => {
   }
 };
 
-// // Dung cho Quan ly don hang 
+// // Dung cho Quan ly don hang
 // export const getOrderCustomer = async (req: NextRequest) => {
 //   const user = await requireLogin(req);
 //   if (!user)
