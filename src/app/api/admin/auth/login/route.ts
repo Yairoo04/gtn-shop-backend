@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
         SELECT 
           u.UserId,
           u.Username,
+          u.FullName,
           u.Email,
           u.PasswordSalt,
           u.PasswordHash,
@@ -106,6 +107,7 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.UserId,
         username: user.Username,
+        fullName: user.FullName,
         email: user.Email,
         role: user.RoleName,
         isActive: user.IsActive,

@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
         u.Email,
         u.Phone AS PhoneNumber,
         u.CreatedAt,
+        u.IsActive,
         (SELECT COUNT(*) FROM dbo.Orders o WHERE o.UserId = u.UserId) AS TotalOrders,
         ISNULL((SELECT SUM(o.TotalAmount) FROM dbo.Orders o WHERE o.UserId = u.UserId), 0) AS TotalSpent
       FROM dbo.Users u
@@ -79,13 +80,25 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Action: block/unblock (nếu cần thêm trường IsActive vào DB)
+    // Action: block/unblock tài khoản (IsActive)
     if (action === 'toggleBlock') {
-      // Hiện tại DB chưa có trường IsActive cho Users
-      // Có thể thêm sau nếu cần
+      // Lấy trạng thái hiện tại
+      const userResult = await pool.request()
+        .input('UserId', sql.Int, customerId)
+        .query('SELECT IsActive FROM dbo.Users WHERE UserId = @UserId AND RoleId = 2');
+      if (!userResult.recordset[0]) {
+        return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+      }
+      const current = userResult.recordset[0].IsActive;
+      // Đảo trạng thái
+      await pool.request()
+        .input('UserId', sql.Int, customerId)
+        .input('IsActive', sql.Bit, !current)
+        .query('UPDATE dbo.Users SET IsActive = @IsActive WHERE UserId = @UserId AND RoleId = 2');
       return NextResponse.json({
         success: true,
-        message: 'Block/Unblock feature not implemented yet',
+        message: !current ? 'Tài khoản đã được mở khóa' : 'Tài khoản đã bị khóa',
+        isActive: !current
       });
     }
 

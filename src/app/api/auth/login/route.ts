@@ -52,11 +52,16 @@ export async function POST(req: NextRequest) {
       `);
       const userInfo = userQuery.recordset[0]||{};
 
+    // Nếu tài khoản bị khóa (IsActive = 0), không cho đăng nhập
+    if (userInfo.IsActive === false || userInfo.IsActive === 0) {
+      return NextResponse.json({ message: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên." }, { status: 403 });
+    }
+
     // Tạo token JWT
     const token = jwt.sign(
       { id: userId, email, role },
       JWT_SECRET,
-      { expiresIn: "2d" } // hết hạn sau 2 ngày
+      { expiresIn: "2d" }
     );
 
     // Login thành công
