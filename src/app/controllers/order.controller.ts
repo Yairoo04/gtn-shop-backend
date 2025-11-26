@@ -130,7 +130,12 @@ export const buyNowController = async (req: NextRequest) => {
     return NextResponse.json({ error: "Dữ liệu không hợp lệ" }, { status: 400 });
   }
 
-  const { productId, quantity = 1, addressId } = body;
+  const {
+    productId,
+    quantity = 1,
+    addressId,
+    paymentMethodId
+  } = body;
 
   if (!productId || !addressId) {
     return NextResponse.json(
@@ -144,7 +149,8 @@ export const buyNowController = async (req: NextRequest) => {
       user.userId,
       Number(productId),
       Number(quantity),
-      Number(addressId)
+      Number(addressId),
+      Number(paymentMethodId) || 1
     );
 
     return NextResponse.json(

@@ -237,6 +237,7 @@ export const getOrderDetails = async (orderId: number) => {
       RecipientPhone: orderInfoRaw.RecipientPhone || '—',
       RecipientAddress: orderInfoRaw.RecipientAddress || '—',
       TotalAmount: Number(orderInfoRaw.TotalAmount || 0),
+      PaymentMethod: orderInfoRaw.PaymentMethod || 'Khi nhận hàng (COD)',
     };
 
     // === CHUẨN HÓA ITEMS ===
@@ -393,7 +394,8 @@ export const buyNow = async (
   userId: number,
   productId: number,
   quantity: number = 1,
-  addressId: number
+  addressId: number,
+  paymentMethodId?: number
 ): Promise<string> => {
   const pool = await getPool();
   const transaction = pool.transaction();
@@ -433,16 +435,23 @@ export const buyNow = async (
     }
 
     const totalAmount = product.Price * quantity;
+    const pmId = paymentMethodId || 1;
+    const pmResult = await transaction.request()
+    .input('PaymentMethodId', sql.Int, pmId)
+    .query('SELECT Name FROM PaymentMethods WHERE Id = @PaymentMethodId');
+    const paymentMethodName = pmResult.recordset[0]?.Name || 'Thanh toán khi nhận hàng (COD)';
 
     // 3. TẠO ĐƠN HÀNG – CHỈ LƯU AddressId (ĐÚNG CHUẨN DB CỦA BẠN!)
     const orderResult = await transaction.request()
       .input('UserId', sql.Int, userId)
       .input('TotalAmount', sql.Decimal(18, 2), totalAmount)
       .input('AddressId', sql.Int, addressId)
+      .input('PaymentMethodId', sql.Int, pmId)
+      .input('PaymentMethodName', sql.NVarChar(100), paymentMethodName)
       .query(`
-        INSERT INTO Orders (UserId, TotalAmount, Status, AddressId, CreatedAt)
+        INSERT INTO Orders (UserId, TotalAmount, StatusId, AddressId, PaymentMethod, PaymentMethodId, CreatedAt)
         OUTPUT INSERTED.OrderId
-        VALUES (@UserId, @TotalAmount, 'Pending', @AddressId, GETDATE())
+        VALUES (@UserId, @TotalAmount, 1, @AddressId, @PaymentMethodName, @PaymentMethodId, GETDATE())
       `);
 
     const orderId = orderResult.recordset[0].OrderId;
@@ -475,6 +484,36 @@ export const buyNow = async (
   } catch (error: any) {
     await transaction.rollback();
     console.error('buyNow error:', error);
+    throw error;
+  }
+};
+
+// ================================
+// CẬP NHẬT TRẠNG THÁI SAU KHI MOMO THANH TOÁN THÀNH CÔNG
+// ================================
+export const updateOrderStatusAfterMoMo = async (
+  orderId: number,
+  statusId: number = 2,        // 2 
+  paymentMethodId: number = 2   // 2 = MoMo
+): Promise<boolean> => {
+  try {
+    const pool = await getPool();
+    const result = await pool.request()
+      .input('OrderId', sql.Int, orderId)
+      .input('StatusId', sql.Int, statusId)
+      .input('PaymentMethodId', sql.Int, paymentMethodId)
+      .query(`
+        UPDATE Orders 
+        SET 
+          StatusId = @StatusId,
+          PaymentMethodId = @PaymentMethodId,
+          UpdatedAt = GETDATE()
+        WHERE OrderId = @OrderId
+      `);
+
+    return result.rowsAffected[0] > 0;
+  } catch (error) {
+    console.error('updateOrderStatusAfterMoMo error:', error);
     throw error;
   }
 };
