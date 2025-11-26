@@ -43,12 +43,13 @@ export async function GET(
         RecipientPhone: result.orderInfo.RecipientPhone || "—",
         RecipientAddress: result.orderInfo.RecipientAddress || "—",
         TotalAmount: Number(result.orderInfo.TotalAmount) || 0,
+        PaymentMethod: result.orderInfo.PaymentMethod || "Khi nhận hàng (COD)",
         items: result.items.map((item: any) => ({
           ProductId: item.ProductId,
           ProductName: item.ProductName || "Sản phẩm",
           Quantity: Number(item.Quantity) || 1,
           Price: Number(item.Price || 0),
-          ImageUrl: item.ImageUrl, 
+          ImageUrl: item.ImageUrl,
         })),
       },
     });
