@@ -25,8 +25,15 @@ export async function addToCartController(req: NextRequest) {
     return NextResponse.json({ cartId: newCartId }, { status: 200 });
   } catch (err: any) {
     console.error("Controller error:", err);
+
+    if (err.number === 50002 || err.number === 50003){
+      return NextResponse.json(
+        {message: err.message || "Sản phẩm đã hết hàng hoặc không đủ số lượng đặt mua"},
+        {status: 400}
+      )
+    };
     return NextResponse.json(
-      { message: "Internal server error", error: err.message },
+      { message: "Có lỗi xảy ra, vui lòng thử lại sau", error: err.message },
       { status: 500 }
     );
   }
