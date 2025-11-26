@@ -12,28 +12,33 @@ function corsHeaders() {
   };
 }
 
-// GET: Lấy danh sách tài khoản Admin (RoleId=1) và Staff (RoleId=3)
+// GET: Lấy danh sách tài khoản Admin (RoleId=1), Staff (RoleId=3), Shipper (RoleId=4)
 export async function GET(req: NextRequest) {
   try {
     const pool = await getPool();
 
     const result = await pool.request().query(`
       SELECT 
-        UserId AS id,
-        Username AS username,
-        COALESCE(FullName, Username) AS fullName,
-        Email AS email,
-        Phone AS phoneNumber,
+        U.UserId AS id,
+        U.Username AS username,
+        COALESCE(U.FullName, U.Username) AS fullName,
+        U.Email AS email,
+        U.Phone AS phoneNumber,
         CASE 
-          WHEN RoleId = 1 THEN 'ADMIN'
-          WHEN RoleId = 3 THEN 'STAFF'
+          WHEN U.RoleId = 1 THEN 'ADMIN'
+          WHEN U.RoleId = 3 THEN 'STAFF'
+          WHEN U.RoleId = 4 THEN 'SHIPPER'
           ELSE 'UNKNOWN'
         END AS role,
-        CASE WHEN IsActive = 1 THEN 1 ELSE 0 END AS active,
-        CreatedAt AS createdAt
-      FROM dbo.Users
-      WHERE RoleId IN (1, 3)
-      ORDER BY CreatedAt DESC
+        CASE WHEN U.IsActive = 1 THEN 1 ELSE 0 END AS active,
+        U.CreatedAt AS createdAt,
+        (
+          SELECT COUNT(1) FROM dbo.Orders O
+          WHERE O.ShipperId = U.UserId AND O.Status = 'Delivered'
+        ) AS deliveredCount
+      FROM dbo.Users U
+      WHERE U.RoleId IN (1, 3, 4)
+      ORDER BY U.CreatedAt DESC
     `);
 
     return NextResponse.json(result.recordset, { headers: corsHeaders() });
@@ -43,7 +48,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: Thêm tài khoản mới (Admin hoặc Staff)
+// POST: Thêm tài khoản mới (Admin, Staff hoặc Shipper)
 export async function POST(req: NextRequest) {
   try {
     const pool = await getPool();
@@ -57,15 +62,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate role - chỉ ADMIN (1) hoặc STAFF (3)
+    // Validate role - cho phép ADMIN (1), STAFF (3), SHIPPER (4)
     const roleMap: { [key: string]: number } = {
       ADMIN: 1,
       STAFF: 3,
+      SHIPPER: 4,
     };
 
     if (!roleMap.hasOwnProperty(role)) {
       return NextResponse.json(
-        { error: "Role không hợp lệ. Chỉ chấp nhận ADMIN hoặc STAFF" },
+        { error: "Role không hợp lệ. Chỉ chấp nhận ADMIN, STAFF hoặc SHIPPER" },
         { status: 400 }
       );
     }
@@ -131,6 +137,7 @@ export async function POST(req: NextRequest) {
           CASE 
             WHEN RoleId = 1 THEN 'ADMIN'
             WHEN RoleId = 3 THEN 'STAFF'
+            WHEN RoleId = 4 THEN 'SHIPPER'
             ELSE 'UNKNOWN'
           END AS role,
           CASE WHEN IsActive = 1 THEN 1 ELSE 0 END AS active,
@@ -160,17 +167,19 @@ export async function PUT(req: NextRequest) {
       );
     }
 
+
     const roleMap: { [key: string]: number } = {
       ADMIN: 1,
       STAFF: 3,
+      SHIPPER: 4,
     };
 
     const roleId = role ? roleMap[role] : undefined;
 
-    // Kiểm tra tài khoản có tồn tại không (chỉ Admin hoặc Staff)
+    // Kiểm tra tài khoản có tồn tại không (Admin, Staff, Shipper)
     const checkAccount = await pool.request()
       .input('id', sql.Int, id)
-      .query('SELECT UserId FROM dbo.Users WHERE UserId = @id AND RoleId IN (1, 3)');
+      .query('SELECT UserId FROM dbo.Users WHERE UserId = @id AND RoleId IN (1, 3, 4)');
 
     if (checkAccount.recordset.length === 0) {
       return NextResponse.json(
@@ -262,6 +271,7 @@ export async function PUT(req: NextRequest) {
           CASE 
             WHEN RoleId = 1 THEN 'ADMIN'
             WHEN RoleId = 3 THEN 'STAFF'
+            WHEN RoleId = 4 THEN 'SHIPPER'
             ELSE 'UNKNOWN'
           END AS role,
           CASE WHEN IsActive = 1 THEN 1 ELSE 0 END AS active,
@@ -294,7 +304,7 @@ export async function DELETE(req: NextRequest) {
     // Kiểm tra tài khoản có tồn tại không
     const checkAccount = await pool.request()
       .input('id', sql.Int, parseInt(id))
-      .query('SELECT UserId, RoleId FROM dbo.Users WHERE UserId = @id AND RoleId IN (1, 3)');
+      .query('SELECT UserId, RoleId FROM dbo.Users WHERE UserId = @id AND RoleId IN (1, 3, 4)');
 
     if (checkAccount.recordset.length === 0) {
       return NextResponse.json(
@@ -308,7 +318,7 @@ export async function DELETE(req: NextRequest) {
     // Không cho phép xóa tài khoản Admin (RoleId = 1)
     if (account.RoleId === 1) {
       return NextResponse.json(
-        { error: "Không thể xóa tài khoản Admin. Chỉ có thể xóa tài khoản Staff." },
+        { error: "Không thể xóa tài khoản Admin. Chỉ có thể xóa tài khoản Staff hoặc Shipper." },
         { status: 403 }
       );
     }
@@ -355,10 +365,10 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // Lấy thông tin tài khoản (chỉ Admin hoặc Staff)
+    // Lấy thông tin tài khoản (Admin, Staff, Shipper)
     const accountResult = await pool.request()
       .input('id', sql.Int, id)
-      .query('SELECT UserId, PasswordHash FROM dbo.Users WHERE UserId = @id AND RoleId IN (1, 3)');
+      .query('SELECT UserId, PasswordHash FROM dbo.Users WHERE UserId = @id AND RoleId IN (1, 3, 4)');
 
     if (accountResult.recordset.length === 0) {
       return NextResponse.json(
