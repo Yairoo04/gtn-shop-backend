@@ -420,7 +420,7 @@ export const buyNow = async (
     const productResult = await transaction.request()
       .input('ProductId', sql.Int, productId)
       .query(`
-        SELECT Name, Price, Stock, ImageUrl
+        SELECT Name, Price, DiscountPrice, Stock, ImageUrl
         FROM Products
         WHERE ProductId = @ProductId AND IsPublished = 1
       `);
@@ -434,14 +434,16 @@ export const buyNow = async (
       throw new Error(`Chỉ còn ${product.Stock} sản phẩm "${product.Name}" trong kho!`);
     }
 
-    const totalAmount = product.Price * quantity;
+    // Lấy giá đã giảm nếu có, nếu không thì lấy giá gốc
+    const finalPrice = (product.DiscountPrice !== null && product.DiscountPrice > 0) ? product.DiscountPrice : product.Price;
+    const totalAmount = finalPrice * quantity;
     const pmId = paymentMethodId || 1;
     const pmResult = await transaction.request()
     .input('PaymentMethodId', sql.Int, pmId)
     .query('SELECT Name FROM PaymentMethods WHERE Id = @PaymentMethodId');
     const paymentMethodName = pmResult.recordset[0]?.Name || 'Thanh toán khi nhận hàng (COD)';
 
-    // 3. TẠO ĐƠN HÀNG – CHỈ LƯU AddressId (ĐÚNG CHUẨN DB CỦA BẠN!)
+    // 3. TẠO ĐƠN HÀNG – CHỈ LƯU AddressId )
     const orderResult = await transaction.request()
       .input('UserId', sql.Int, userId)
       .input('TotalAmount', sql.Decimal(18, 2), totalAmount)
@@ -456,12 +458,12 @@ export const buyNow = async (
 
     const orderId = orderResult.recordset[0].OrderId;
 
-    // 4. THÊM CHI TIẾT ĐƠN HÀNG (dùng bảng OrderItems – đúng chuẩn của bạn)
+    // 4. THÊM CHI TIẾT ĐƠN HÀNG (dùng bảng OrderItems )
     await transaction.request()
       .input('OrderId', sql.Int, orderId)
       .input('ProductId', sql.Int, productId)
       .input('ProductName', sql.NVarChar(300), product.Name)
-      .input('UnitPrice', sql.Decimal(18, 2), product.Price)
+      .input('UnitPrice', sql.Decimal(18, 2), finalPrice)
       .input('Quantity', sql.Int, quantity)
       .query(`
         INSERT INTO OrderItems (OrderId, ProductId, ProductName, UnitPrice, Quantity)
