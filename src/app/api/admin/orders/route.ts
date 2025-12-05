@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
         const order = orderResult.recordset[0];
         order.Items = itemsResult.recordset;
 
-        console.log('✅ Order details fetched:', order.OrderId, 'with', order.Items.length, 'items');
+        console.log(' Order details fetched:', order.OrderId, 'with', order.Items.length, 'items');
         return NextResponse.json({ success: true, data: order });
       } catch (detailError: any) {
         console.error('❌ Error fetching order details:', detailError);
