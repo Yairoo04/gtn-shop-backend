@@ -14,16 +14,38 @@ export async function POST(req: NextRequest) {
     const { orderId, amount } = await req.json();
 
     if (!orderId || !amount || amount < 10000) {
-      return NextResponse.json({ error: "Thiếu hoặc sai thông tin" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Thiếu orderId hoặc amount < 10000" },
+        { status: 400 }
+      );
     }
 
     const requestId = `GTN${orderId}_${Date.now()}`;
     const orderInfo = `Thanh toán đơn hàng #${orderId} - GTN Shop`;
-    const extraData = Buffer.from(JSON.stringify({ orderId: Number(orderId) })).toString("base64");
 
-    const rawSignature = `accessKey=${ACCESS_KEY}&amount=${amount}&extraData=${extraData}&ipnUrl=${IPN_URL}&orderId=${requestId}&orderInfo=${orderInfo}&partnerCode=${PARTNER_CODE}&redirectUrl=${RETURN_URL}&requestId=${requestId}&requestType=captureWallet`;
+    const extraData = Buffer.from(
+      JSON.stringify({ orderId: Number(orderId) })
+    ).toString("base64");
 
-    const signature = crypto.createHmac("sha256", SECRET_KEY).update(rawSignature).digest("hex");
+    //  SIGNATURE 
+    const rawSignature =
+      `accessKey=${ACCESS_KEY}` +
+      `&amount=${amount}` +
+      `&extraData=${extraData}` +
+      `&ipnUrl=${IPN_URL}` +
+      `&orderId=${requestId}` +
+      `&orderInfo=${orderInfo}` +
+      `&partnerCode=${PARTNER_CODE}` +
+      `&redirectUrl=${RETURN_URL}` +
+      `&requestId=${requestId}` +
+      `&requestType=captureWallet`;
+
+    console.log("Raw signature:", rawSignature);
+
+    const signature = crypto
+      .createHmac("sha256", SECRET_KEY)
+      .update(rawSignature)
+      .digest("hex");
 
     const body = {
       partnerCode: PARTNER_CODE,
@@ -36,29 +58,39 @@ export async function POST(req: NextRequest) {
       ipnUrl: IPN_URL,
       extraData,
       requestType: "captureWallet",
-      signature,
+      orderType: "momo_wallet",
       lang: "vi",
+      signature,
     };
 
-    const res = await fetch("https://test-payment.momo.vn/v2/gateway/api/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    console.log("Body gửi MoMo:", body);
 
-    const data = await res.json();
+    const response = await fetch(
+      "https://test-payment.momo.vn/v2/gateway/api/create",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
 
-    if (data.resultCode === 0) {
-      return NextResponse.json({
-        success: true,
-        payUrl: data.payUrl,
-      });
-    } else {
-      console.error("MoMo trả lỗi:", data);
-      return NextResponse.json({ error: data.message || "Không tạo được QR MoMo" }, { status: 500 });
+    const data = await response.json();
+    console.log("MoMo create response:", data);
+
+    if (data.resultCode !== 0) {
+      return NextResponse.json(
+        { error: data.message, resultCode: data.resultCode },
+        { status: 500 }
+      );
     }
-  } catch (error: any) {
-    console.error("Lỗi tạo MoMo QR:", error);
+
+    return NextResponse.json({
+      success: true,
+      payUrl: data.payUrl,
+      requestId,
+    });
+  } catch (error) {
+    console.error("Lỗi tạo MoMo:", error);
     return NextResponse.json({ error: "Lỗi hệ thống" }, { status: 500 });
   }
 }

@@ -14,7 +14,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { orderId, statusId = 2, paymentMethodId = 2 } = body;
+    //const { orderId, statusId = 2, paymentMethodId = 2 } = body;
+    const { orderId, statusId, paymentMethodId } = body;
 
     if (!orderId || isNaN(Number(orderId))) {
       return NextResponse.json(
