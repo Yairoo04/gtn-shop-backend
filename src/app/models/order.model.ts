@@ -396,7 +396,7 @@ export const buyNow = async (
   quantity: number = 1,
   addressId: number,
   paymentMethodId?: number
-): Promise<string> => {
+): Promise<{ orderId: number; totalAmount: number }> => {
   const pool = await getPool();
   const transaction = pool.transaction();
   await transaction.begin();
@@ -439,8 +439,8 @@ export const buyNow = async (
     const totalAmount = finalPrice * quantity;
     const pmId = paymentMethodId || 1;
     const pmResult = await transaction.request()
-    .input('PaymentMethodId', sql.Int, pmId)
-    .query('SELECT Name FROM PaymentMethods WHERE Id = @PaymentMethodId');
+      .input('PaymentMethodId', sql.Int, pmId)
+      .query('SELECT Name FROM PaymentMethods WHERE Id = @PaymentMethodId');
     const paymentMethodName = pmResult.recordset[0]?.Name || 'Thanh toán khi nhận hàng (COD)';
 
     // 3. TẠO ĐƠN HÀNG – CHỈ LƯU AddressId )
@@ -481,8 +481,11 @@ export const buyNow = async (
       `);
 
     await transaction.commit();
-    return orderId.toString();
-
+    // return orderId.toString();
+    return {
+      orderId,
+      totalAmount,
+    };
   } catch (error: any) {
     await transaction.rollback();
     console.error('buyNow error:', error);

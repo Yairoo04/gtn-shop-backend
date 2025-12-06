@@ -145,16 +145,34 @@ export const buyNowController = async (req: NextRequest) => {
   }
 
   try {
-    const orderId = await buyNow(
+    // const orderId = await buyNow(
+    //   user.userId,
+    //   Number(productId),
+    //   Number(quantity),
+    //   Number(addressId),
+    //   Number(paymentMethodId) || 1
+    // );
+
+    // return NextResponse.json(
+    //   { success: true, data: { orderId } },
+    //   { status: 201 }
+    // );
+
+    const result = await buyNow(
       user.userId,
       Number(productId),
       Number(quantity),
       Number(addressId),
       Number(paymentMethodId) || 1
     );
-
     return NextResponse.json(
-      { success: true, data: { orderId } },
+      {
+        success: true,
+        data: {
+          orderId: result.orderId,
+          totalAmount: result.totalAmount
+        }
+      },
       { status: 201 }
     );
   } catch (error: any) {
