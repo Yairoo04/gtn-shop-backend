@@ -38,7 +38,7 @@ export async function GET() {
     const shipping = await pool.request().query(`
       SELECT COUNT(*) AS DonDangGiao
       FROM dbo.Orders
-      WHERE Status IN (N'Shipping', N'Processing')
+      WHERE Status IN (N'Shipping')
     `);
     
     // Doanh thu tháng này

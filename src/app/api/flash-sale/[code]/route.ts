@@ -5,10 +5,9 @@ import { getPool } from '~/app/lib/db';
 
 export async function GET(
   req: NextRequest,
-  contextPromise: Promise<{ params: { code: string } }>
+  context: { params: { code: string } }
 ) {
-  const { params } = await contextPromise;
-  const { code } = params;
+  const { code } = context.params;
 
   try {
     const pool = await getPool();
