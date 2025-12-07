@@ -11,6 +11,7 @@ import {
   buyNow,
 } from "~/app/models/order.model";
 import { verifyToken } from "./user.controller";
+import { revalidatePath } from 'next/cache';
 
 export const requireLogin = async (req: NextRequest) => {
   const auth = req.headers.get("Authorization");
@@ -229,6 +230,8 @@ export const cancelOrderController = async (req: NextRequest) => {
   // 3. GỌI MODEL – ĐÃ ĐẢM BẢO user.userId KHÔNG NULL
   try {
     await cancelOrder(Number(orderId), user.userId);
+    revalidatePath(`/don-hang/${orderId}`);
+    revalidatePath('/don-hang');
     return NextResponse.json(
       { success: true, message: "Đơn hàng đã hủy thành công" },
       { status: 200 }
