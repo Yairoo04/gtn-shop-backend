@@ -3,11 +3,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import sql from 'mssql';
 import { getPool } from '~/app/lib/db';
 
+// GET /api/flash-sale/[code]
 export async function GET(
   req: NextRequest,
-  context: { params: { code: string } }
+  ctx: { params: Promise<{ code: string }> }, // ← params là Promise
 ) {
-  const { code } = context.params;
+  // BẮT BUỘC phải await params
+  const { code } = await ctx.params;
+
+  if (!code) {
+    return NextResponse.json(
+      { success: false, message: 'Missing flash sale code' },
+      { status: 400 },
+    );
+  }
 
   try {
     const pool = await getPool();
@@ -24,13 +33,13 @@ export async function GET(
         WHERE Code = @Code
           AND IsActive = 1
           AND StartTime <= @Now
-          AND EndTime   >= @Now
+          AND EndTime   >= @Now;
       `);
 
     if (!campaignResult.recordset.length) {
       return NextResponse.json(
         { success: false, message: 'Campaign not found or not active' },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -52,19 +61,22 @@ export async function GET(
           AND p.IsPublished = 1
         ORDER BY 
           ISNULL(fsi.DisplayOrder, 9999), 
-          p.ProductId
+          p.ProductId;
       `);
 
-    return NextResponse.json({
-      success: true,
-      campaign,
-      products: itemsResult.recordset,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        campaign,
+        products: itemsResult.recordset,
+      },
+      { status: 200 },
+    );
   } catch (err) {
     console.error('GET /api/flash-sale/[code] error:', err);
     return NextResponse.json(
       { success: false, message: 'Server error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
