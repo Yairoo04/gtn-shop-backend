@@ -1,4 +1,4 @@
-// src/models/product.model.ts
+// src/models/product.model.ts (complete updated file)
 
 import sql from 'mssql';
 import { getPool } from '../lib/db';
@@ -33,6 +33,9 @@ export type ProductRow = {
   CreatedAt: string;
   UpdatedAt: string | null;
   CategoryName?: string | null;
+
+  AverageRating?: number | null;
+  TotalReviews?: number | null;
 };
 
 export type SpecRow = {
@@ -40,6 +43,19 @@ export type SpecRow = {
   detail: string;      // SpecValue AS detail
   warranty: string | null;
 };
+
+// Interface cho Review
+export interface ProductReview {
+  ReviewId: number;
+  ProductId: number;
+  UserId: number; // Giả sử có UserId
+  Rating: number; // 1-5
+  Comment: string;
+  CreatedAt: Date;
+  UpdatedAt: Date | null;
+  IsActive: boolean;
+  UserName?: string; // Join với Users nếu cần
+}
 
 // === GET ALL ===
 export const getAllProducts = async (): Promise<ProductRow[]> => {
@@ -58,17 +74,40 @@ export const getAllProducts = async (): Promise<ProductRow[]> => {
     ) r
     WHERE p.IsPublished = 1
     ORDER BY p.CreatedAt DESC
+
   `);
   return result.recordset;
 };
 
 // === GET BY ID ===
-export const getProductById = async (productId: number): Promise<ProductRow | null> => {
+export const getProductById = async (
+  productId: number
+): Promise<ProductRow | null> => {
   const pool = await getPool();
   const result = await pool
     .request()
     .input('ProductId', sql.Int, productId)
-    .query('SELECT * FROM dbo.Products WHERE ProductId = @ProductId AND IsPublished = 1');
+    .query(`
+      SELECT 
+        p.ProductId,
+        p.Name,
+        p.Description,
+        p.CategoryId,
+        p.SKU,
+        p.Price,
+        p.DiscountPrice,
+        p.Stock,
+        p.ImageUrl,
+        p.IsPublished,
+        p.CreatedAt,
+        p.UpdatedAt,
+        ISNULL(r.AverageRating, 0) AS AverageRating,
+        ISNULL(r.TotalReviews, 0) AS TotalReviews
+      FROM dbo.Products p
+      LEFT JOIN dbo.vProductRatingSummary r
+        ON r.ProductId = p.ProductId
+      WHERE p.ProductId = @ProductId AND p.IsPublished = 1
+    `);
   return result.recordset[0] || null;
 };
 
@@ -137,7 +176,8 @@ export const updateProduct = async (
 
     for (const [dbField, { input, type }] of Object.entries(fieldMap)) {
       const value = product[input];
-      if (value !== undefined) { // Allow null to set fields to null
+      if (value !== undefined) {
+        // Allow null to set fields to null
         updates.push(`${dbField} = @${input}`);
         request.input(input, type, value);
       }
@@ -208,7 +248,9 @@ export const searchProducts = async (
 };
 
 // === GET PRODUCT DETAILS ===
-export async function getProductDetails(productId: number): Promise<{ product: ProductRow | null; specs: SpecRow[] }> {
+export async function getProductDetails(
+  productId: number
+): Promise<{ product: ProductRow | null; specs: SpecRow[]; reviews: ProductReview[] }> {
   try {
     const pool = await getPool();
 
@@ -216,14 +258,21 @@ export async function getProductDetails(productId: number): Promise<{ product: P
     const productResult = await pool.request()
       .input('ProductId', sql.Int, productId)
       .query(`
-        SELECT p.*, c.Name AS CategoryName
+        SELECT 
+          p.ProductId, p.Name, p.Description, p.CategoryId, p.SKU,
+          p.Price, p.DiscountPrice, p.Stock, p.ImageUrl, p.IsPublished,
+          p.CreatedAt, p.UpdatedAt,
+          c.Name AS CategoryName,
+          ISNULL(r.AverageRating, 0) AS AverageRating,
+          ISNULL(r.TotalReviews, 0) AS TotalReviews
         FROM dbo.Products p
         LEFT JOIN dbo.Categories c ON p.CategoryId = c.CategoryId
+        LEFT JOIN dbo.vProductRatingSummary r ON r.ProductId = p.ProductId
         WHERE p.ProductId = @ProductId AND p.IsPublished = 1
       `);
     const product = productResult.recordset[0] || null;
 
-    // Query 2: Specs (tối ưu: ORDER BY để sắp xếp nếu cần, ví dụ theo SpecId)
+    // Query 2: Specs
     const specsResult = await pool.request()
       .input('ProductId', sql.Int, productId)
       .query(`
@@ -233,11 +282,14 @@ export async function getProductDetails(productId: number): Promise<{ product: P
           Warranty 
         FROM dbo.ProductSpecs 
         WHERE ProductId = @ProductId
-        ORDER BY SpecId  -- Tối ưu: Sắp xếp theo thứ tự insert nếu cần
+        ORDER BY SpecId
       `);
     const specs = specsResult.recordset || [];
 
-    return { product, specs };
+    // Query 3: Reviews
+    const reviews = await getProductReviews(productId);
+
+    return { product, specs, reviews };
   } catch (error: any) {
     console.error('[ERROR] getProductDetails failed:', error.message, error.stack);
     throw new Error(`Failed to fetch product details: ${error.message}`);
@@ -248,15 +300,19 @@ export async function getProductDetails(productId: number): Promise<{ product: P
 export async function getProductList(): Promise<ProductRow[]> {
   const pool = await getPool();
   const result = await pool.request().query(`
-    SELECT p.ProductId, p.Name, p.Description, p.CategoryId, p.SKU,
-           p.Price, p.DiscountPrice, p.Stock, p.ImageUrl, p.IsPublished,
-           p.CreatedAt, p.UpdatedAt
+    SELECT 
+      p.ProductId, p.Name, p.Description, p.CategoryId, p.SKU,
+      p.Price, p.DiscountPrice, p.Stock, p.ImageUrl, p.IsPublished,
+      p.CreatedAt, p.UpdatedAt,
+      ISNULL(r.AverageRating, 0) AS AverageRating,
+      ISNULL(r.TotalReviews, 0) AS TotalReviews
     FROM dbo.Products p
+    LEFT JOIN dbo.vProductRatingSummary r ON r.ProductId = p.ProductId
     WHERE p.IsPublished = 1
     ORDER BY p.CreatedAt DESC
   `);
   return result.recordset;
-};
+}
 
 export const addProduct = createProduct;
 
@@ -267,7 +323,7 @@ export async function seedSpecsForProduct(productId: number): Promise<void> {
     .input('ProductId', sql.Int, productId)
     .query('SELECT COUNT(*) AS count FROM dbo.ProductSpecs WHERE ProductId = @ProductId');
   if (existing.recordset[0].count > 0) {
-    return;  // Tối ưu: Không log, chỉ skip nếu tồn tại
+    return;  // Không seed nếu đã có
   }
   await pool.request().query(`
     INSERT INTO dbo.ProductSpecs (ProductId, SpecName, SpecValue, Warranty) VALUES
@@ -280,7 +336,7 @@ export async function seedSpecsForProduct(productId: number): Promise<void> {
   `);
 }
 
-// === UPDATE PRODUCT SPECS (Mới: Replace specs cho productId)
+// === UPDATE PRODUCT SPECS (Replace specs cho productId)
 export async function updateProductSpecs(productId: number, specs: SpecRow[]): Promise<void> {
   const pool = await getPool();
   const transaction = pool.transaction();
@@ -321,3 +377,44 @@ export async function updateProductSpecs(productId: number, specs: SpecRow[]): P
     throw new Error(`Failed to update product specs: ${error.message}`);
   }
 }
+
+// Get reviews cho product
+export const getProductReviews = async (productId: number): Promise<ProductReview[]> => {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('ProductId', sql.Int, productId)
+    .query(`
+      SELECT 
+        ReviewId, ProductId, UserId, Rating, Comment, CreatedAt, UpdatedAt, IsActive
+        -- , u.Name AS UserName (nếu join Users u ON u.UserId = r.UserId)
+      FROM dbo.ProductReviews r
+      WHERE ProductId = @ProductId AND IsActive = 1
+      ORDER BY CreatedAt DESC
+    `);
+  return result.recordset;
+};
+
+// Add review
+export const addProductReview = async (
+  review: Omit<ProductReview, 'ReviewId' | 'CreatedAt' | 'UpdatedAt'>
+): Promise<ProductReview> => {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('ProductId', sql.Int, review.ProductId)
+    .input('UserId', sql.Int, review.UserId)
+    .input('Rating', sql.Int, review.Rating)
+    .input('Comment', sql.NVarChar, review.Comment)
+    .input('IsActive', sql.Bit, review.IsActive ?? 1) // Default active
+    .query(`
+      INSERT INTO dbo.ProductReviews (
+        ProductId, UserId, Rating, Comment, IsActive, CreatedAt
+      )
+      OUTPUT INSERTED.*
+      VALUES (
+        @ProductId, @UserId, @Rating, @Comment, @IsActive, GETDATE()
+      )
+    `);
+  return result.recordset[0];
+};

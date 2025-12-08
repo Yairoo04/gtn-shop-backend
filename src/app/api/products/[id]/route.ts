@@ -1,4 +1,4 @@
-// app/api/products/[id]/route.ts
+// app/api/products/[id]/route.ts (original, no major changes needed, but complete)
 import { NextRequest, NextResponse } from 'next/server';
 import {
     getProductById,
