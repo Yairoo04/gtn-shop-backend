@@ -49,9 +49,11 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: true, data: product });
       }
     } else if (keyword || minPrice || maxPrice || categoryId) {
+      // TODO: Nếu muốn search cũng trả về số lượng đánh giá thì cần sửa searchProducts tương tự getAllProducts
       const products = await searchProducts(keyword, minPrice, maxPrice, categoryId, page, pageSize);
       return NextResponse.json({ success: true, data: products });
     } else {
+      // Trả về danh sách sản phẩm kèm số lượng đánh giá và điểm trung bình
       const products = await getAllProducts();
       return NextResponse.json({ success: true, data: products });
     }

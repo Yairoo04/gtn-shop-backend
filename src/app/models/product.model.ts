@@ -44,7 +44,21 @@ export type SpecRow = {
 // === GET ALL ===
 export const getAllProducts = async (): Promise<ProductRow[]> => {
   const pool = await getPool();
-  const result = await pool.request().query('SELECT * FROM dbo.Products WHERE IsPublished = 1');
+  // Lấy tất cả sản phẩm kèm tổng số đánh giá và điểm trung bình
+  const result = await pool.request().query(`
+    SELECT p.*, 
+      ISNULL(r.TotalReviews, 0) AS totalReviews,
+      ISNULL(r.AverageRating, 0) AS averageRating
+    FROM dbo.Products p
+    OUTER APPLY (
+      SELECT COUNT(*) AS TotalReviews,
+             CAST(AVG(CAST(pr.Rating AS DECIMAL(3,2))) AS DECIMAL(3,2)) AS AverageRating
+      FROM dbo.ProductReviews pr
+      WHERE pr.ProductId = p.ProductId AND pr.IsActive = 1
+    ) r
+    WHERE p.IsPublished = 1
+    ORDER BY p.CreatedAt DESC
+  `);
   return result.recordset;
 };
 
