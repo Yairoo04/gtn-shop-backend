@@ -70,6 +70,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Lưu thông báo đơn hàng mới vào bảng Notifications
+    await pool.request()
+      .input('Type', sql.NVarChar(50), 'order')
+      .input('Message', sql.NVarChar(500), `Đơn hàng mới #${orderId} vừa được tạo, vui lòng kiểm tra và chuyển trạng thái.`)
+      .input('IsRead', sql.Bit, 0)
+      .query('INSERT INTO Notifications (Type, Message, IsRead) VALUES (@Type, @Message, @IsRead)');
+
     // 5. Thành công → trả về orderId
     return NextResponse.json(
       {

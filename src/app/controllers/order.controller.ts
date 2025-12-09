@@ -11,6 +11,7 @@ import {
   buyNow,
 } from "~/app/models/order.model";
 import { verifyToken } from "./user.controller";
+import sql from "mssql";
 import { revalidatePath } from 'next/cache';
 
 export const requireLogin = async (req: NextRequest) => {
@@ -166,6 +167,19 @@ export const buyNowController = async (req: NextRequest) => {
       Number(addressId),
       Number(paymentMethodId) || 1
     );
+
+    // Lưu thông báo đơn hàng mới vào bảng Notifications
+    try {
+      const pool = await require('~/app/lib/db').getPool();
+      await pool.request()
+        .input('Type', sql.NVarChar(50), 'order')
+        .input('Message', sql.NVarChar(500), `Đơn hàng mới #${result.orderId} vừa được tạo, vui lòng kiểm tra và chuyển trạng thái.`)
+        .input('IsRead', sql.Bit, 0)
+        .query('INSERT INTO Notifications (Type, Message, IsRead) VALUES (@Type, @Message, @IsRead)');
+    } catch (err) {
+      console.error('[NOTIFY] Lỗi lưu thông báo đơn hàng mới:', err);
+    }
+
     return NextResponse.json(
       {
         success: true,

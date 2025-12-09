@@ -101,11 +101,15 @@ export const getProductById = async (
         p.IsPublished,
         p.CreatedAt,
         p.UpdatedAt,
-        ISNULL(r.AverageRating, 0) AS AverageRating,
-        ISNULL(r.TotalReviews, 0) AS TotalReviews
+        ISNULL(r.TotalReviews, 0) AS TotalReviews,
+        ISNULL(r.AverageRating, 0) AS AverageRating
       FROM dbo.Products p
-      LEFT JOIN dbo.vProductRatingSummary r
-        ON r.ProductId = p.ProductId
+      OUTER APPLY (
+        SELECT COUNT(*) AS TotalReviews,
+               CAST(AVG(CAST(pr.Rating AS DECIMAL(3,2))) AS DECIMAL(3,2)) AS AverageRating
+        FROM dbo.ProductReviews pr
+        WHERE pr.ProductId = p.ProductId AND pr.IsActive = 1
+      ) r
       WHERE p.ProductId = @ProductId AND p.IsPublished = 1
     `);
   return result.recordset[0] || null;
@@ -263,11 +267,16 @@ export async function getProductDetails(
           p.Price, p.DiscountPrice, p.Stock, p.ImageUrl, p.IsPublished,
           p.CreatedAt, p.UpdatedAt,
           c.Name AS CategoryName,
-          ISNULL(r.AverageRating, 0) AS AverageRating,
-          ISNULL(r.TotalReviews, 0) AS TotalReviews
+          ISNULL(r.TotalReviews, 0) AS TotalReviews,
+          ISNULL(r.AverageRating, 0) AS AverageRating
         FROM dbo.Products p
         LEFT JOIN dbo.Categories c ON p.CategoryId = c.CategoryId
-        LEFT JOIN dbo.vProductRatingSummary r ON r.ProductId = p.ProductId
+        OUTER APPLY (
+          SELECT COUNT(*) AS TotalReviews,
+                 CAST(AVG(CAST(pr.Rating AS DECIMAL(3,2))) AS DECIMAL(3,2)) AS AverageRating
+          FROM dbo.ProductReviews pr
+          WHERE pr.ProductId = p.ProductId AND pr.IsActive = 1
+        ) r
         WHERE p.ProductId = @ProductId AND p.IsPublished = 1
       `);
     const product = productResult.recordset[0] || null;

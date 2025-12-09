@@ -14,6 +14,7 @@ type ReviewRow = {
   Username: string | null;
   Rating: number;
   Comment: string | null;
+  ReplyContent?: string | null;
   CreatedAt: string;
   UpdatedAt: string | null;
   IsEdited: boolean;
@@ -113,26 +114,29 @@ export async function GET(
     const reviews: ReviewRow[] = reviewsRs ? [...reviewsRs] : [];
     const summaryRow: SummaryRow | null = summaryRs?.[0] ?? null;
 
+    const mappedReviews = reviews.map((r) => ({
+      id: r.ReviewId,
+      productId: r.ProductId,
+      userId: r.UserId,
+      authorName: r.FullName || r.Username || 'Khách hàng',
+      rating: r.Rating,
+      comment: r.Comment,
+      replyContent: r.ReplyContent,
+      createdAt: r.CreatedAt,
+      updatedAt: r.UpdatedAt,
+      isEdited: r.IsEdited,
+      images: r.ImagesJson
+        ? JSON.parse(r.ImagesJson).map(
+            (i: { ImageUrl: string }) => i.ImageUrl,
+          )
+        : [],
+    }));
+    console.log('API /products/:id/reviews mappedReviews:', mappedReviews);
     return NextResponse.json(
       {
         success: true,
         data: {
-          reviews: reviews.map((r) => ({
-            id: r.ReviewId,
-            productId: r.ProductId,
-            userId: r.UserId,
-            authorName: r.FullName || r.Username || 'Khách hàng',
-            rating: r.Rating,
-            comment: r.Comment,
-            createdAt: r.CreatedAt,
-            updatedAt: r.UpdatedAt,
-            isEdited: r.IsEdited,
-            images: r.ImagesJson
-              ? JSON.parse(r.ImagesJson).map(
-                  (i: { ImageUrl: string }) => i.ImageUrl,
-                )
-              : [],
-          })),
+          reviews: mappedReviews,
           summary: mapSummary(summaryRow),
         },
       },
@@ -283,6 +287,12 @@ export async function POST(
           );
       }
     }
+
+    // Thêm thông báo cho admin
+    await pool.request()
+      .input('Type', sql.NVarChar(50), 'review')
+      .input('Message', sql.NVarChar(500), `Có đánh giá mới cho sản phẩm ID ${productId}`)
+      .query('INSERT INTO Notifications (Type, Message) VALUES (@Type, @Message)');
 
     // Lấy data mới sau khi cập nhật
     const result = await pool

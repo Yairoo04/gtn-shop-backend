@@ -146,6 +146,12 @@ export async function PUT(req: NextRequest) {
         break;
     }
 
+    // Lấy trạng thái cũ của đơn hàng
+    const oldStatusResult = await pool.request()
+      .input('OrderId', sql.Int, orderId)
+      .query('SELECT Status FROM dbo.Orders WHERE OrderId = @OrderId');
+    const oldStatus = oldStatusResult.recordset[0]?.Status?.toLowerCase().trim() || "";
+
     // Update trạng thái
     await pool.request()
       .input('OrderId', sql.Int, orderId)
@@ -156,6 +162,8 @@ export async function PUT(req: NextRequest) {
         SET Status = @Status, StatusId = @StatusId 
         WHERE OrderId = @OrderId
       `);
+
+    // ...Không còn logic tạo thông báo cho trạng thái đơn hàng...
 
     return NextResponse.json({ 
       success: true, 
