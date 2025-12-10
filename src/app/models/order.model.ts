@@ -395,7 +395,8 @@ export const buyNow = async (
   productId: number,
   quantity: number = 1,
   addressId: number,
-  paymentMethodId?: number
+  paymentMethodId?: number,
+  shippingFee: number = 0
 ): Promise<{ orderId: number; totalAmount: number }> => {
   const pool = await getPool();
   const transaction = pool.transaction();
@@ -436,7 +437,7 @@ export const buyNow = async (
 
     // Lấy giá đã giảm nếu có, nếu không thì lấy giá gốc
     const finalPrice = (product.DiscountPrice !== null && product.DiscountPrice > 0) ? product.DiscountPrice : product.Price;
-    const totalAmount = finalPrice * quantity;
+    const totalAmount = finalPrice * quantity + shippingFee;
     const pmId = paymentMethodId || 1;
     const pmResult = await transaction.request()
       .input('PaymentMethodId', sql.Int, pmId)
@@ -450,10 +451,11 @@ export const buyNow = async (
       .input('AddressId', sql.Int, addressId)
       .input('PaymentMethodId', sql.Int, pmId)
       .input('PaymentMethodName', sql.NVarChar(100), paymentMethodName)
+      .input('ShippingFee', sql.Decimal(18, 2), shippingFee)
       .query(`
-        INSERT INTO Orders (UserId, TotalAmount, StatusId, AddressId, PaymentMethod, PaymentMethodId, CreatedAt)
+        INSERT INTO Orders (UserId, TotalAmount, StatusId, AddressId, PaymentMethod, PaymentMethodId, ShippingFee, CreatedAt)
         OUTPUT INSERTED.OrderId
-        VALUES (@UserId, @TotalAmount, 1, @AddressId, @PaymentMethodName, @PaymentMethodId, GETDATE())
+        VALUES (@UserId, @TotalAmount, 1, @AddressId, @PaymentMethodName, @PaymentMethodId, @ShippingFee, GETDATE())
       `);
 
     const orderId = orderResult.recordset[0].OrderId;

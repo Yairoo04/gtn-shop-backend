@@ -136,7 +136,8 @@ export const buyNowController = async (req: NextRequest) => {
     productId,
     quantity = 1,
     addressId,
-    paymentMethodId
+    paymentMethodId,
+    shippingFee
   } = body;
 
   if (!productId || !addressId) {
@@ -165,7 +166,8 @@ export const buyNowController = async (req: NextRequest) => {
       Number(productId),
       Number(quantity),
       Number(addressId),
-      Number(paymentMethodId) || 1
+      Number(paymentMethodId) || 1,
+      Number(shippingFee) || 0
     );
 
     // Lưu thông báo đơn hàng mới vào bảng Notifications

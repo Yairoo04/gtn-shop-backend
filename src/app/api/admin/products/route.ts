@@ -4,6 +4,7 @@ import { getPool } from '../../../lib/db';
 import sql from 'mssql';
 
 // GET: Lấy danh sách sản phẩm
+
 export async function GET(req: NextRequest) {
   try {
     const pool = await getPool();

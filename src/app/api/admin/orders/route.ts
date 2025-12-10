@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       }
 
       try {
-        // Query thông tin đơn hàng
+        // Query thông tin đơn hàng (có địa chỉ)
         const orderResult = await pool.request()
           .input('OrderId', sql.Int, orderIdNum)
           .query(`
@@ -28,15 +28,20 @@ export async function GET(req: NextRequest) {
               COALESCE(u.FullName, u.Username) AS RecipientName,
               u.Phone AS RecipientPhone,
               o.TotalAmount,
+              o.ShippingFee,
               o.Status,
               o.PaymentMethod,
               o.CreatedAt,
               o.StatusId,
               u.UserId AS CustomerId,
               COALESCE(u.FullName, u.Username) AS CustomerName,
-              u.Email AS CustomerEmail
+              u.Email AS CustomerEmail,
+              a.Street,
+              a.City,
+              a.Province
             FROM dbo.Orders o
             LEFT JOIN dbo.Users u ON o.UserId = u.UserId
+            LEFT JOIN dbo.Addresses a ON o.AddressId = a.AddressId
             WHERE o.OrderId = @OrderId
           `);
 
