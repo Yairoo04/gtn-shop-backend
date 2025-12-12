@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
         .request()
         .input("ProductId", sql.Int, productId)
         .input("SpecName", sql.NVarChar(100), spec.SpecName)
-        .input("SpecValue", sql.NVarChar(255), spec.SpecValue)
+        .input("SpecValue", sql.NVarChar(sql.MAX), spec.SpecValue)
         .input("Warranty", sql.NVarChar(100), spec.Warranty || null)
         .query(
           "INSERT INTO ProductSpecs (ProductId, SpecName, SpecValue, Warranty) VALUES (@ProductId, @SpecName, @SpecValue, @Warranty)"

@@ -10,11 +10,48 @@ function parseQueryText(q: string) {
   let categoryId: number | undefined;
 
   // Danh mục
-  if (lower.includes('laptop')) categoryId = 1;
-  else if (lower.includes('pc')) categoryId = 2;
-  else if (lower.includes('màn hình') || lower.includes('monitor')) categoryId = 3;
-  else if (lower.includes('bàn phím') || lower.includes('keyboard')) categoryId = 4;
-  else if (lower.includes('chuột') || lower.includes('mouse')) categoryId = 5;
+  if (lower.includes('laptop')) {
+    categoryId = 1;                          // Laptop
+  } else if (lower.includes('pc')) {
+    categoryId = 2;                          // PC nguyên bộ
+  } else if (lower.includes('màn hình') || lower.includes('monitor')) {
+    categoryId = 3;                          // Màn hình
+  } else if (lower.includes('bàn phím') || lower.includes('keyboard')) {
+    categoryId = 4;                          // Bàn phím
+  } else if (lower.includes('chuột') || lower.includes('mouse')) {
+    categoryId = 5;                          // Chuột
+  } else if (
+    lower.includes('main') ||
+    lower.includes('motherboard') ||
+    lower.includes('cpu') ||
+    lower.includes('vga') ||
+    lower.includes('card màn hình') ||
+    lower.includes('card đồ họa') ||
+    lower.includes('gpu')
+  ) {
+    categoryId = 6;                          // Main, CPU, VGA
+  } else if (
+    lower.includes('case') ||
+    lower.includes('vỏ máy') ||
+    lower.includes('nguồn') ||
+    lower.includes('psu') ||
+    lower.includes('tản nhiệt') ||
+    lower.includes('tản') ||
+    lower.includes('radiator') ||
+    lower.includes('cooler') ||
+    lower.includes('fan case')
+  ) {
+    categoryId = 7;                          // Case, Nguồn, Tản
+  } else if (
+    lower.includes('ổ cứng') ||
+    lower.includes('ssd') ||
+    lower.includes('hdd') ||
+    lower.includes('ram') ||
+    lower.includes('thẻ nhớ') ||
+    lower.includes('memory card')
+  ) {
+    categoryId = 8;                          // Ổ cứng, RAM, Thẻ nhớ
+  }
 
   // Giá tiền
   const priceRegex = /(\d+)\s*(tr|triệu)/g;
