@@ -5,11 +5,11 @@ import bcrypt from 'bcrypt';
 
 export async function POST(req: NextRequest) {
   try {
-    const { username, password } = await req.json();
+    const { email, password } = await req.json();
 
-    if (!username || !password) {
+    if (!email || !password) {
       return NextResponse.json(
-        { success: false, error: 'Username and password are required' },
+        { success: false, error: 'Email và mật khẩu là bắt buộc' },
         { status: 400 }
       );
     }
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Lấy thông tin user và role
     const userResult = await pool.request()
-      .input('Username', sql.NVarChar, username)
+      .input('Email', sql.NVarChar, email)
       .query(`
         SELECT 
           u.UserId,
@@ -32,12 +32,12 @@ export async function POST(req: NextRequest) {
           r.RoleName
         FROM dbo.Users u
         INNER JOIN dbo.Roles r ON u.RoleId = r.RoleId
-        WHERE u.Username = @Username
+        WHERE u.Email = @Email
       `);
 
     if (userResult.recordset.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'Invalid username or password' },
+        { success: false, error: 'Sai email hoặc mật khẩu' },
         { status: 401 }
       );
     }
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 
     if (!isValid) {
       return NextResponse.json(
-        { success: false, error: 'Invalid username or password' },
+        { success: false, error: 'Sai email hoặc mật khẩu' },
         { status: 401 }
       );
     }
@@ -107,6 +107,7 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.UserId,
         username: user.Username,
+        // vẫn trả về username để FE dùng nếu cần, nhưng xác thực qua email
         fullName: user.FullName,
         email: user.Email,
         role: user.RoleName,
