@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
 
     // 3. Verify password - hỗ trợ cả SHA2 (old) và bcrypt (new)
     let isValid = false;
-
+    console.log('[LOGIN][DEBUG] PasswordHash (buffer):', user.PasswordHash);
+    console.log('[LOGIN][DEBUG] PasswordSalt (buffer):', user.PasswordSalt);
     // Kiểm tra xem có PasswordSalt không (SHA2 method)
     if (user.PasswordSalt) {
       // Old method: SHA2_512 with salt
@@ -78,10 +79,13 @@ export async function POST(req: NextRequest) {
             END AS IsValid
         `);
       isValid = verifyResult.recordset[0].IsValid === 1;
+      console.log('[LOGIN][DEBUG] SHA2_512 verify result:', isValid);
     } else {
       // New method: bcrypt (for accounts created from admin panel)
       const passwordHash = user.PasswordHash.toString('utf-8');
+      console.log('[LOGIN][DEBUG] PasswordHash (utf-8):', passwordHash);
       isValid = await bcrypt.compare(password, passwordHash);
+      console.log('[LOGIN][DEBUG] bcrypt compare result:', isValid);
     }
 
     if (!isValid) {
